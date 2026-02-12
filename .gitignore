@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.claude/
 .next/
 .turbo/
 *.tsbuildinfo
@@ -9,3 +10,4 @@ dist/
 coverage/
 *.log
 .DS_Store
+CLAUDE.md
