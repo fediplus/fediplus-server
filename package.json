@@ -1,0 +1,32 @@
+{
+  "name": "fediplus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fedi+ — Google+ reborn on the Fediverse",
+  "workspaces": [
+    "packages/shared",
+    "packages/backend",
+    "packages/frontend",
+    "packages/sdk"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "test": "turbo test",
+    "test:e2e": "turbo test:e2e",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "db:generate": "npm run db:generate -w packages/backend",
+    "db:migrate": "npm run db:migrate -w packages/backend",
+    "db:seed": "npm run db:seed -w packages/backend",
+    "clean": "turbo clean"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "npm@10.9.0"
+}

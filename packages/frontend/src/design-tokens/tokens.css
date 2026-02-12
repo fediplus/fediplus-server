@@ -1,0 +1,159 @@
+:root {
+  /* Colors - Light Mode */
+  --color-primary: #dd4b39;
+  --color-primary-hover: #c23321;
+  --color-primary-light: #fce4ec;
+  --color-primary-dark: #b71c1c;
+
+  --color-accent-blue: #4285f4;
+  --color-accent-green: #0f9d58;
+  --color-accent-yellow: #f4b400;
+  --color-accent-red: #db4437;
+
+  --color-bg: #f5f5f5;
+  --color-bg-elevated: #ffffff;
+  --color-bg-hover: #eeeeee;
+  --color-bg-active: #e0e0e0;
+
+  --color-text-primary: #212121;
+  --color-text-secondary: #757575;
+  --color-text-disabled: #bdbdbd;
+  --color-text-inverse: #ffffff;
+  --color-text-link: #4285f4;
+
+  --color-border: #e0e0e0;
+  --color-border-strong: #bdbdbd;
+
+  --color-success: #0f9d58;
+  --color-warning: #f4b400;
+  --color-error: #db4437;
+  --color-info: #4285f4;
+
+  /* Elevation */
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-2: 0 3px 6px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.12);
+  --shadow-3: 0 10px 20px rgba(0, 0, 0, 0.15), 0 3px 6px rgba(0, 0, 0, 0.1);
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* Layout */
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 64px;
+  --content-max-width: 640px;
+  --header-height: 56px;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 350ms ease;
+
+  /* Z-Index */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal-backdrop: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+}
+
+/* Dark Mode */
+[data-theme="dark"] {
+  --color-primary: #ef5350;
+  --color-primary-hover: #f44336;
+  --color-primary-light: #4a1a1a;
+  --color-primary-dark: #ff7043;
+
+  --color-bg: #121212;
+  --color-bg-elevated: #1e1e1e;
+  --color-bg-hover: #2a2a2a;
+  --color-bg-active: #333333;
+
+  --color-text-primary: #e0e0e0;
+  --color-text-secondary: #a0a0a0;
+  --color-text-disabled: #666666;
+  --color-text-inverse: #121212;
+  --color-text-link: #82b1ff;
+
+  --color-border: #333333;
+  --color-border-strong: #555555;
+
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-2: 0 3px 6px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.25);
+  --shadow-3: 0 10px 20px rgba(0, 0, 0, 0.4), 0 3px 6px rgba(0, 0, 0, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-primary: #ef5350;
+    --color-primary-hover: #f44336;
+    --color-primary-light: #4a1a1a;
+    --color-primary-dark: #ff7043;
+
+    --color-bg: #121212;
+    --color-bg-elevated: #1e1e1e;
+    --color-bg-hover: #2a2a2a;
+    --color-bg-active: #333333;
+
+    --color-text-primary: #e0e0e0;
+    --color-text-secondary: #a0a0a0;
+    --color-text-disabled: #666666;
+    --color-text-inverse: #121212;
+    --color-text-link: #82b1ff;
+
+    --color-border: #333333;
+    --color-border-strong: #555555;
+
+    --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-2: 0 3px 6px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.25);
+    --shadow-3: 0 10px 20px rgba(0, 0, 0, 0.4), 0 3px 6px rgba(0, 0, 0, 0.25);
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

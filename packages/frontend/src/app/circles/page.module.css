@@ -1,0 +1,121 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.heading {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.controls {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.viewToggle {
+  display: flex;
+  gap: var(--space-1);
+  border: none;
+  padding: 0;
+}
+
+.loading,
+.emptyState {
+  text-align: center;
+  color: var(--color-text-secondary);
+  padding: var(--space-8);
+}
+
+/* Visual (grid) mode */
+.visualGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.circleCard {
+  border-top: 3px solid;
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+  transition: box-shadow var(--transition-fast);
+  cursor: pointer;
+  position: relative;
+}
+
+.circleCard:hover {
+  box-shadow: var(--shadow-2);
+}
+
+.circleIndicator {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  margin: 0 auto var(--space-3);
+}
+
+.circleName {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.circleMeta {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  margin-top: var(--space-1);
+}
+
+.defaultBadge {
+  display: inline-block;
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  background-color: var(--color-bg-hover);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+}
+
+/* List mode */
+.listView {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.listCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.listColor {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.listInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.listName {
+  font-weight: var(--font-weight-medium);
+}
+
+.listMeta {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
