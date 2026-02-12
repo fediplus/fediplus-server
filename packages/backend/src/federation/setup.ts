@@ -17,10 +17,10 @@ import {
   MemoryKvStore,
   InProcessMessageQueue,
 } from "@fedify/fedify";
+import { Temporal } from "@js-temporal/polyfill";
 import { eq } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import { users, profiles } from "../db/schema/users.js";
-import { follows } from "../db/schema/follows.js";
 import { config } from "../config.js";
 
 export function setupFederation() {
@@ -63,7 +63,7 @@ export function setupFederation() {
         ),
         url: new URL(`${config.publicUrl}/@${identifier}`),
         manuallyApprovesFollowers: false,
-        published: user.createdAt,
+        published: Temporal.Instant.fromEpochMilliseconds(user.createdAt.getTime()),
       });
 
       return actor;

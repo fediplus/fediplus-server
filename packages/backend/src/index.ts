@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-import { integrateFederation } from "@fedify/fastify";
+import fedifyPlugin from "@fedify/fastify";
 import { config } from "./config.js";
 import { setupFederation } from "./federation/setup.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -29,7 +29,7 @@ async function main() {
 
   // Federation (Fedify)
   const federation = setupFederation();
-  integrateFederation(app, federation);
+  await app.register(fedifyPlugin, { federation });
 
   // Routes
   await app.register(authRoutes);

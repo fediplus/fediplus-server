@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import jwt from "jsonwebtoken";
+import type { StringValue } from "ms";
 import { config } from "../config.js";
 
 export interface AuthPayload {
@@ -33,6 +34,6 @@ export async function authMiddleware(
 
 export function generateToken(payload: AuthPayload): string {
   return jwt.sign(payload, config.jwt.secret, {
-    expiresIn: config.jwt.expiry,
+    expiresIn: config.jwt.expiry as StringValue,
   });
 }
