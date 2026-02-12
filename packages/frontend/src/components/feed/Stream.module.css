@@ -1,0 +1,38 @@
+.stream {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.filterTabs {
+  display: flex;
+  gap: var(--space-1);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+  -webkit-overflow-scrolling: touch;
+}
+
+.circleDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+}
+
+.empty {
+  text-align: center;
+  color: var(--color-text-secondary);
+  padding: var(--space-12) var(--space-4);
+}
+
+.loadMore {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.loading {
+  text-align: center;
+  color: var(--color-text-secondary);
+  padding: var(--space-8);
+}

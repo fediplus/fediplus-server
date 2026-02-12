@@ -26,8 +26,8 @@
   line-height: var(--leading-relaxed);
 }
 
-.emptyState {
-  text-align: center;
-  color: var(--color-text-secondary);
-  padding: var(--space-12) var(--space-4);
+.actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }

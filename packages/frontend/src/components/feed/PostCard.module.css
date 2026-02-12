@@ -1,0 +1,112 @@
+.card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.spoiler {
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+}
+
+.authorLink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  color: inherit;
+}
+
+.authorLink:hover {
+  text-decoration: none;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--text-lg);
+  flex-shrink: 0;
+}
+
+.displayName {
+  display: block;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-base);
+  color: var(--color-text-primary);
+}
+
+.meta {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.visibilityBadge {
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.content {
+  padding: 0 var(--space-4) var(--space-3);
+  line-height: var(--leading-relaxed);
+  word-break: break-word;
+}
+
+.content :global(.hashtag) {
+  color: var(--color-accent-blue);
+  font-weight: var(--font-weight-medium);
+}
+
+.content :global(.mention) {
+  color: var(--color-accent-blue);
+  font-weight: var(--font-weight-medium);
+}
+
+.actions {
+  display: flex;
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-1) var(--space-2);
+}
+
+.actionButton {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+  border-radius: 0;
+}
+
+.actionButton:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.reacted {
+  color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.count {
+  font-size: var(--text-sm);
+}

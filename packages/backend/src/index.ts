@@ -10,6 +10,8 @@ import { userRoutes } from "./routes/api/v1/users.js";
 import { circleRoutes } from "./routes/api/v1/circles.js";
 import { postRoutes } from "./routes/api/v1/posts.js";
 import { followRoutes } from "./routes/api/v1/follows.js";
+import { notificationRoutes } from "./routes/api/v1/notifications.js";
+import { streamRoutes } from "./routes/api/v1/stream.js";
 
 async function main() {
   const app = Fastify({
@@ -38,6 +40,8 @@ async function main() {
   await app.register(circleRoutes);
   await app.register(postRoutes);
   await app.register(followRoutes);
+  await app.register(notificationRoutes);
+  await app.register(streamRoutes);
 
   // Health check
   app.get("/health", async () => ({ status: "ok", version: "0.1.0" }));

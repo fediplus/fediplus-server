@@ -1,0 +1,141 @@
+.composer {
+  padding: 0;
+}
+
+.inputArea {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--text-lg);
+  flex-shrink: 0;
+}
+
+.textarea {
+  flex: 1;
+  border: none;
+  resize: vertical;
+  min-height: 60px;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  color: var(--color-text-primary);
+  background: transparent;
+  padding: var(--space-2) 0;
+}
+
+.textarea::placeholder {
+  color: var(--color-text-disabled);
+}
+
+.textarea:focus {
+  outline: none;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.toolbarLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.charCount {
+  font-size: var(--text-sm);
+  color: var(--color-text-disabled);
+}
+
+.overLimit {
+  color: var(--color-error);
+  font-weight: var(--font-weight-semibold);
+}
+
+.audiencePicker {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-bg);
+}
+
+.visibilityFieldset {
+  border: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.visibilityOption {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.visibilityChip {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  transition: all var(--transition-fast);
+}
+
+.visibilityChip.selected {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  border-color: var(--color-primary);
+}
+
+.visibilityDescription {
+  font-size: var(--text-xs);
+  color: var(--color-text-disabled);
+}
+
+.circleFieldset {
+  border: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.circleLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.circleOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.circleDot {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+}

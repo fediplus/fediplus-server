@@ -1,27 +1,43 @@
+"use client";
+
+import { PostComposer } from "@/components/feed/PostComposer";
+import { Stream } from "@/components/feed/Stream";
+import { useAuthStore } from "@/stores/auth";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import Link from "next/link";
 import styles from "./page.module.css";
 
 export default function HomePage() {
+  const user = useAuthStore((s) => s.user);
+
   return (
     <div className={styles.container}>
-      <h1 className={styles.heading}>Home</h1>
+      <h1 className="sr-only">Home</h1>
 
-      <Card as="article" className={styles.welcomeCard}>
-        <h2 className={styles.cardTitle}>Welcome to Fedi+</h2>
-        <p className={styles.cardText}>
-          Google+ reborn on the Fediverse. Share with the right people using
-          Circles, join Communities, curate Collections, and connect through
-          Hangouts — all powered by ActivityPub.
-        </p>
-      </Card>
-
-      <section aria-label="Timeline">
-        <h2 className="sr-only">Your timeline</h2>
-        <p className={styles.emptyState}>
-          Your timeline is empty. Follow people or join communities to see posts
-          here.
-        </p>
-      </section>
+      {user ? (
+        <>
+          <PostComposer />
+          <Stream />
+        </>
+      ) : (
+        <Card className={styles.welcomeCard} elevation={2}>
+          <h2 className={styles.cardTitle}>Welcome to Fedi+</h2>
+          <p className={styles.cardText}>
+            Google+ reborn on the Fediverse. Share with the right people using
+            Circles, join Communities, curate Collections, and connect through
+            Hangouts — all powered by ActivityPub.
+          </p>
+          <div className={styles.actions}>
+            <Link href="/register">
+              <Button variant="primary">Create account</Button>
+            </Link>
+            <Link href="/login">
+              <Button variant="secondary">Sign in</Button>
+            </Link>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

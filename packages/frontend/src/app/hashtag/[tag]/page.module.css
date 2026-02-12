@@ -1,0 +1,23 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.heading {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-accent-blue);
+}
+
+.empty {
+  text-align: center;
+  color: var(--color-text-secondary);
+  padding: var(--space-12) var(--space-4);
+}
+
+.loadMore {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4);
+}
