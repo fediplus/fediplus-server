@@ -8,6 +8,13 @@
       "when": 1770876375995,
       "tag": "0000_real_black_bolt",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1770937109594,
+      "tag": "0001_small_baron_zemo",
+      "breakpoints": true
     }
   ]
 }
