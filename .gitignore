@@ -1,13 +1,59 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-.claude/
 .next/
 .turbo/
 *.tsbuildinfo
+
+# Environment / secrets
 .env
 .env.local
 .env.*.local
-coverage/
-*.log
+.env.production
+.env.staging
+
+# Keys and credentials
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+credentials.json
+service-account*.json
+secrets/
+
+# Database
+*.sql.bak
+*.dump
+*.sqlite
+*.sqlite3
+
+# IDE / OS
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test / coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Claude Code
+.claude/
 CLAUDE.md
+
+# MinIO / S3 local data
+minio_data/
+data/
+
+# Docker volumes (if mounted locally)
+postgres_data/
+redis_data/
