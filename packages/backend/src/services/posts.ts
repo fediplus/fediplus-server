@@ -7,6 +7,7 @@ import { circles, circleMembers } from "../db/schema/circles.js";
 import { notifications } from "../db/schema/notifications.js";
 import { config } from "../config.js";
 import { resolveCircleMembers } from "./circles.js";
+import { attachMediaToPost, getMediaByPost } from "./media.js";
 import type { CreatePostInput } from "@fediplus/shared";
 
 // ── Helpers ──
@@ -78,9 +79,21 @@ async function enrichPost(
 ) {
   const counts = await getPostCounts(row.post.id);
   const userReacted = await hasUserReacted(row.post.id, currentUserId);
+  const postMedia = await getMediaByPost(row.post.id);
   return {
     ...parsePostJson(row.post),
     author: buildAuthor(row),
+    media: postMedia.map((m) => ({
+      id: m.id,
+      url: m.url,
+      thumbnailUrl: m.thumbnailUrl,
+      blurhash: m.blurhash,
+      width: m.width,
+      height: m.height,
+      mimeType: m.mimeType,
+      altText: m.altText,
+      type: m.type,
+    })),
     ...counts,
     userReacted,
   };
@@ -149,6 +162,11 @@ export async function createPost(authorId: string, input: CreatePostInput) {
   const audienceRecords = await buildAudienceRecords(post.id, authorId, input);
   if (audienceRecords.length > 0) {
     await db.insert(postAudiences).values(audienceRecords);
+  }
+
+  // Attach media
+  if (input.mediaIds && input.mediaIds.length > 0) {
+    await attachMediaToPost(input.mediaIds, post.id);
   }
 
   // Notify parent post author on comment

@@ -106,6 +106,45 @@ export function PostCard({ post, onComment }: PostCardProps) {
         dangerouslySetInnerHTML={{ __html: renderContent(post.content) }}
       />
 
+      {post.media && post.media.length > 0 && (
+        <div
+          className={`${styles.mediaGrid} ${post.media.length === 1 ? styles.mediaSingle : post.media.length === 2 ? styles.mediaTwo : styles.mediaMulti}`}
+          role="group"
+          aria-label={`${post.media.length} media attachment${post.media.length > 1 ? "s" : ""}`}
+        >
+          {post.media.map((m) => (
+            m.type === "image" ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={m.id}
+                src={m.url}
+                alt={m.altText || "Attached image"}
+                className={styles.mediaImage}
+                loading="lazy"
+                width={m.width ?? undefined}
+                height={m.height ?? undefined}
+              />
+            ) : m.type === "video" ? (
+              <video
+                key={m.id}
+                src={m.url}
+                controls
+                className={styles.mediaVideo}
+                aria-label={m.altText || "Attached video"}
+              />
+            ) : m.type === "audio" ? (
+              <audio
+                key={m.id}
+                src={m.url}
+                controls
+                className={styles.mediaAudio}
+                aria-label={m.altText || "Attached audio"}
+              />
+            ) : null
+          ))}
+        </div>
+      )}
+
       <footer className={styles.actions}>
         <Button
           variant="ghost"

@@ -4,6 +4,7 @@ import {
   MAX_BIO_LENGTH,
   MAX_DISPLAY_NAME_LENGTH,
   MAX_CIRCLE_NAME_LENGTH,
+  MAX_MEDIA_PER_POST,
   POST_VISIBILITY,
   ACTOR_TYPES,
   REACTION_TYPES,
@@ -64,10 +65,11 @@ export const addCircleMembersSchema = z.object({
 });
 
 export const createPostSchema = z.object({
-  content: z.string().min(1).max(MAX_POST_LENGTH),
+  content: z.string().max(MAX_POST_LENGTH).default(""),
   visibility: z.enum(POST_VISIBILITY),
   replyToId: z.string().uuid().optional(),
   circleIds: z.array(z.string().uuid()).optional(),
+  mediaIds: z.array(z.string().uuid()).max(MAX_MEDIA_PER_POST).optional(),
   sensitive: z.boolean().default(false),
   spoilerText: z.string().max(200).optional(),
 });

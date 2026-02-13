@@ -4,11 +4,21 @@ import { useState, useEffect, useRef, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { apiFetch } from "@/hooks/useApi";
-import { useFeedStore, type StreamPost } from "@/stores/feed";
+import { useFeedStore, type StreamPost, type MediaAttachment } from "@/stores/feed";
 import { useAuthStore } from "@/stores/auth";
 import { announce } from "@/a11y/announcer";
 import { MAX_POST_LENGTH } from "@fediplus/shared";
 import styles from "./PostComposer.module.css";
+
+interface PendingFile {
+  file: File;
+  preview: string;
+  altText: string;
+}
+
+import { MAX_MEDIA_PER_POST } from "@fediplus/shared";
+
+const ACCEPTED_TYPES = "image/jpeg,image/png,image/gif,image/webp,image/avif,video/mp4,video/webm,audio/mpeg,audio/ogg";
 
 interface Circle {
   id: string;
@@ -33,9 +43,11 @@ export function PostComposer() {
   const [visibility, setVisibility] = useState<Visibility>("public");
   const [selectedCircles, setSelectedCircles] = useState<string[]>([]);
   const [circles, setCircles] = useState<Circle[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [showAudiencePicker, setShowAudiencePicker] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -50,13 +62,73 @@ export function PostComposer() {
   const charCount = content.length;
   const isOverLimit = charCount > MAX_POST_LENGTH;
 
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+
+    const remaining = MAX_MEDIA_PER_POST - pendingFiles.length;
+    const toAdd = Array.from(files).slice(0, remaining);
+
+    const newPending: PendingFile[] = toAdd.map((file) => ({
+      file,
+      preview: file.type.startsWith("image/")
+        ? URL.createObjectURL(file)
+        : "",
+      altText: "",
+    }));
+
+    setPendingFiles((prev) => [...prev, ...newPending]);
+    // Reset input so the same file can be re-selected
+    e.target.value = "";
+  }
+
+  function removeFile(index: number) {
+    setPendingFiles((prev) => {
+      const removed = prev[index];
+      if (removed.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
+  function updateFileAltText(index: number, altText: string) {
+    setPendingFiles((prev) =>
+      prev.map((f, i) => (i === index ? { ...f, altText } : f))
+    );
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!content.trim() || isOverLimit || submitting || !user) return;
+    if ((!content.trim() && pendingFiles.length === 0) || isOverLimit || submitting || !user) return;
 
     setSubmitting(true);
     const currentUser = user;
     try {
+      // Upload media files first
+      const uploadedMedia: MediaAttachment[] = [];
+      for (const pending of pendingFiles) {
+        const formData = new FormData();
+        formData.append("file", pending.file);
+        if (pending.altText) {
+          formData.append("altText", pending.altText);
+        }
+
+        const result = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/api/v1/media`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${useAuthStore.getState().token}`,
+            },
+            body: formData,
+          }
+        ).then((r) => {
+          if (!r.ok) throw new Error("Upload failed");
+          return r.json() as Promise<MediaAttachment>;
+        });
+
+        uploadedMedia.push({ ...result, altText: pending.altText, type: pending.file.type.startsWith("image/") ? "image" : pending.file.type.startsWith("video/") ? "video" : pending.file.type.startsWith("audio/") ? "audio" : "document" });
+      }
+
       const post = await apiFetch<StreamPost>("/api/v1/posts", {
         method: "POST",
         body: JSON.stringify({
@@ -64,6 +136,7 @@ export function PostComposer() {
           visibility,
           circleIds:
             visibility === "circles" ? selectedCircles : undefined,
+          mediaIds: uploadedMedia.map((m) => m.id),
         }),
       });
 
@@ -84,6 +157,7 @@ export function PostComposer() {
         hashtags: post.hashtags ?? [],
         mentions: post.mentions ?? [],
         editHistory: [],
+        media: uploadedMedia,
         replyToId: null,
         reshareOfId: null,
         sensitive: false,
@@ -94,6 +168,7 @@ export function PostComposer() {
 
       prependPost(enriched);
       setContent("");
+      setPendingFiles([]);
       setSelectedCircles([]);
       setShowAudiencePicker(false);
       announce("Post created successfully");
@@ -131,6 +206,43 @@ export function PostComposer() {
           />
         </div>
 
+        {pendingFiles.length > 0 && (
+          <div className={styles.mediaPreview} role="list" aria-label="Attached files">
+            {pendingFiles.map((pf, i) => (
+              <div key={i} className={styles.previewItem} role="listitem">
+                {pf.preview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={pf.preview}
+                    alt={pf.altText || pf.file.name}
+                    className={styles.previewImage}
+                  />
+                ) : (
+                  <div className={styles.previewFile}>
+                    {pf.file.type.startsWith("video/") ? "Video" : pf.file.type.startsWith("audio/") ? "Audio" : "File"}
+                  </div>
+                )}
+                <input
+                  type="text"
+                  className={styles.altTextInput}
+                  placeholder="Alt text (describe for accessibility)"
+                  value={pf.altText}
+                  onChange={(e) => updateFileAltText(i, e.target.value)}
+                  aria-label={`Alt text for ${pf.file.name}`}
+                />
+                <button
+                  type="button"
+                  className={styles.removeFile}
+                  onClick={() => removeFile(i)}
+                  aria-label={`Remove ${pf.file.name}`}
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className={styles.toolbar}>
           <div className={styles.toolbarLeft}>
             <Button
@@ -142,6 +254,26 @@ export function PostComposer() {
               aria-controls="audience-picker"
             >
               {VISIBILITY_OPTIONS.find((o) => o.value === visibility)?.label}
+            </Button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPTED_TYPES}
+              multiple
+              onChange={handleFileSelect}
+              className="sr-only"
+              aria-label="Attach files"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={pendingFiles.length >= MAX_MEDIA_PER_POST}
+              aria-label={`Attach media (${pendingFiles.length}/${MAX_MEDIA_PER_POST})`}
+            >
+              <span aria-hidden="true">{"\u25A3"}</span> Photo
             </Button>
 
             <span
@@ -156,7 +288,7 @@ export function PostComposer() {
             type="submit"
             variant="primary"
             size="sm"
-            disabled={!content.trim() || isOverLimit || submitting}
+            disabled={(!content.trim() && pendingFiles.length === 0) || isOverLimit || submitting}
           >
             {submitting ? "Posting..." : "Post"}
           </Button>

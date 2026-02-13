@@ -15,6 +15,13 @@
       "when": 1770937109594,
       "tag": "0001_small_baron_zemo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770944390838,
+      "tag": "0002_kind_silver_fox",
+      "breakpoints": true
     }
   ]
 }

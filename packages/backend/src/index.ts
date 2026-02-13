@@ -14,6 +14,7 @@ import { notificationRoutes } from "./routes/api/v1/notifications.js";
 import { streamRoutes } from "./routes/api/v1/stream.js";
 import { communityRoutes } from "./routes/api/v1/communities.js";
 import { collectionRoutes } from "./routes/api/v1/collections.js";
+import { mediaRoutes } from "./routes/api/v1/media.js";
 
 async function main() {
   const app = Fastify({
@@ -46,6 +47,7 @@ async function main() {
   await app.register(streamRoutes);
   await app.register(communityRoutes);
   await app.register(collectionRoutes);
+  await app.register(mediaRoutes);
 
   // Health check
   app.get("/health", async () => ({ status: "ok", version: "0.1.0" }));

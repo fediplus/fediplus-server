@@ -41,3 +41,4 @@ export const MAX_DISPLAY_NAME_LENGTH = 100;
 export const MAX_CIRCLE_NAME_LENGTH = 50;
 export const MAX_CIRCLES_PER_USER = 100;
 export const MAX_CIRCLE_MEMBERS = 5000;
+export const MAX_MEDIA_PER_POST = 50;

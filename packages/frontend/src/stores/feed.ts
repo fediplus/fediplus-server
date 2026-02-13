@@ -8,6 +8,18 @@ export interface PostAuthor {
   actorUri: string;
 }
 
+export interface MediaAttachment {
+  id: string;
+  url: string;
+  thumbnailUrl: string | null;
+  blurhash: string | null;
+  width: number | null;
+  height: number | null;
+  mimeType: string;
+  altText: string;
+  type: "image" | "video" | "audio" | "document";
+}
+
 export interface StreamPost {
   id: string;
   authorId: string;
@@ -21,6 +33,7 @@ export interface StreamPost {
   sensitive: boolean;
   spoilerText: string | null;
   editHistory: { content: string; editedAt: string }[];
+  media: MediaAttachment[];
   createdAt: string;
   updatedAt: string;
   author: PostAuthor;
