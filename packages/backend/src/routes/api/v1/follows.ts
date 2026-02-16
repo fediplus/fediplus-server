@@ -9,6 +9,11 @@ import {
   unblockUser,
   getBlocked,
 } from "../../../services/follows.js";
+import {
+  sendFollow,
+  sendUndoFollow,
+  sendBlock,
+} from "../../../federation/outbox.js";
 
 export async function followRoutes(app: FastifyInstance) {
   app.post(
@@ -17,6 +22,7 @@ export async function followRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const follow = await followUser(request.user!.userId, id);
+      sendFollow(request.user!.userId, id, follow.id).catch(() => {});
       return reply.status(201).send(follow);
     }
   );
@@ -26,6 +32,7 @@ export async function followRoutes(app: FastifyInstance) {
     { preHandler: [authMiddleware] },
     async (request) => {
       const { id } = request.params as { id: string };
+      sendUndoFollow(request.user!.userId, id).catch(() => {});
       await unfollowUser(request.user!.userId, id);
       return { ok: true };
     }
@@ -47,6 +54,7 @@ export async function followRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const block = await blockUser(request.user!.userId, id);
+      sendBlock(request.user!.userId, id).catch(() => {});
       return reply.status(201).send(block);
     }
   );

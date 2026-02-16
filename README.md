@@ -96,52 +96,77 @@ This starts PostgreSQL on port 5432, Redis on port 6379, and MinIO on ports 9000
 
 Install PostgreSQL, Redis, and MinIO using your OS package manager or official installers.
 
-PostgreSQL:
-```bash
-# Create the database and user
+#### PostgreSQL
+
+**Windows:** Download and install from https://www.postgresql.org/download/windows/. During setup, note the password you set for the `postgres` superuser. The installer adds PostgreSQL to your PATH. After installation, open a **new** terminal and run:
+
+```cmd
 psql -U postgres -c "CREATE USER fediplus WITH PASSWORD 'fediplus';"
 psql -U postgres -c "CREATE DATABASE fediplus OWNER fediplus;"
 ```
 
-Redis:
+If `psql` is not found, add the PostgreSQL `bin` directory to your PATH (e.g. `C:\Program Files\PostgreSQL\16\bin`).
+
+**Linux:**
 ```bash
-# Linux
-sudo apt install redis-server
-sudo systemctl start redis
-
-# macOS
-brew install redis
-brew services start redis
-
-# Windows — use Memurai (https://www.memurai.com/) or WSL
+sudo apt install postgresql-16
+sudo -u postgres psql -c "CREATE USER fediplus WITH PASSWORD 'fediplus';"
+sudo -u postgres psql -c "CREATE DATABASE fediplus OWNER fediplus;"
 ```
 
-MinIO:
+**macOS:**
 ```bash
-# Linux
-wget https://dl.min.io/server/minio/release/linux-amd64/minio
-chmod +x minio
-./minio server ./data --console-address ":9001"
+brew install postgresql@16
+brew services start postgresql@16
+psql -U postgres -c "CREATE USER fediplus WITH PASSWORD 'fediplus';"
+psql -U postgres -c "CREATE DATABASE fediplus OWNER fediplus;"
+```
 
-# macOS
-brew install minio/stable/minio
-minio server ./data --console-address ":9001"
+#### Redis
 
-# Windows — download from https://min.io/download#/windows
+**Windows:** Use Memurai (https://www.memurai.com/) as a Redis-compatible server, or skip Redis for now — the backend defaults to in-process queues in development.
+
+**Linux:** `sudo apt install redis-server && sudo systemctl start redis`
+
+**macOS:** `brew install redis && brew services start redis`
+
+#### MinIO
+
+**Windows:** Download from https://min.io/download#/windows, then run:
+
+```cmd
 minio.exe server C:\minio-data --console-address ":9001"
 ```
 
-After starting MinIO, create the media bucket:
+**Linux:**
 ```bash
-# Install the MinIO client (mc)
+wget https://dl.min.io/server/minio/release/linux-amd64/minio
+chmod +x minio
+./minio server ./data --console-address ":9001"
+```
+
+**macOS:**
+```bash
+brew install minio/stable/minio
+minio server ./data --console-address ":9001"
+```
+
+After starting MinIO, create the media bucket:
+```cmd
 mc alias set local http://localhost:9000 fediplus fediplus-secret
 mc mb local/fediplus-media
 ```
 
 ### 3. Configure environment
 
+**Linux/macOS:**
 ```bash
 cp .env.example .env
+```
+
+**Windows (CMD):**
+```cmd
+copy .env.example .env
 ```
 
 Edit `.env` if your service credentials or ports differ from the defaults.

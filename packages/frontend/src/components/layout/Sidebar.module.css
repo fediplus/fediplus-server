@@ -70,6 +70,21 @@
   flex: 1;
 }
 
+.navItem.disabled {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
+}
+
+.comingSoon {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  margin-left: auto;
+}
+
 /* Mobile: hide sidebar, use bottom nav instead */
 @media (max-width: 768px) {
   .sidebar {

@@ -104,7 +104,7 @@ export async function loginUser(input: LoginInput) {
     });
   }
 
-  const valid = await bcrypt.compare(input.password, user.passwordHash);
+  const valid = user.passwordHash ? await bcrypt.compare(input.password, user.passwordHash) : false;
   if (!valid) {
     throw Object.assign(new Error("Invalid email or password"), {
       statusCode: 401,

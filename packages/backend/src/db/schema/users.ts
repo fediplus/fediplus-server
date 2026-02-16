@@ -3,6 +3,7 @@ import {
   uuid,
   varchar,
   text,
+  boolean,
   timestamp,
   pgEnum,
 } from "drizzle-orm/pg-core";
@@ -16,8 +17,10 @@ export const actorTypeEnum = pgEnum("actor_type", [
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   username: varchar("username", { length: 30 }).notNull().unique(),
-  email: varchar("email", { length: 255 }).notNull().unique(),
-  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).unique(),
+  passwordHash: varchar("password_hash", { length: 255 }),
+  isLocal: boolean("is_local").notNull().default(true),
+  domain: varchar("domain", { length: 255 }),
   actorType: actorTypeEnum("actor_type").notNull().default("Person"),
   actorUri: varchar("actor_uri", { length: 2048 }).notNull().unique(),
   inboxUri: varchar("inbox_uri", { length: 2048 }).notNull(),
@@ -25,7 +28,7 @@ export const users = pgTable("users", {
   followersUri: varchar("followers_uri", { length: 2048 }).notNull(),
   followingUri: varchar("following_uri", { length: 2048 }).notNull(),
   publicKey: text("public_key").notNull(),
-  privateKey: text("private_key").notNull(),
+  privateKey: text("private_key"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

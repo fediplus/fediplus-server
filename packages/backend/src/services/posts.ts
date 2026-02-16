@@ -8,7 +8,18 @@ import { notifications } from "../db/schema/notifications.js";
 import { config } from "../config.js";
 import { resolveCircleMembers } from "./circles.js";
 import { attachMediaToPost, getMediaByPost } from "./media.js";
+import { sendEvent, broadcastToUsers } from "../realtime/sse.js";
 import type { CreatePostInput } from "@fediplus/shared";
+
+// ── Follower broadcast helper ──
+
+async function getFollowerIds(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: follows.followerId })
+    .from(follows)
+    .where(and(eq(follows.followingId, userId), eq(follows.status, "accepted")));
+  return rows.map((r) => r.id);
+}
 
 // ── Helpers ──
 
@@ -182,10 +193,21 @@ export async function createPost(authorId: string, input: CreatePostInput) {
         targetId: parent.id,
         targetType: "post",
       });
+      sendEvent(parent.authorId, "notification", {
+        type: "comment",
+        postId: parent.id,
+        actorId: authorId,
+      });
     }
   }
 
-  return { ...post, apId, hashtags, mentions };
+  const result = { ...post, apId, hashtags, mentions };
+
+  // SSE: broadcast to followers
+  const followerIds = await getFollowerIds(authorId);
+  broadcastToUsers(followerIds, "new_post", { postId: post.id, authorId });
+
+  return result;
 }
 
 // ── Reshare ──
@@ -226,7 +248,20 @@ export async function resharePost(userId: string, postId: string) {
       targetId: original.id,
       targetType: "post",
     });
+    sendEvent(original.authorId, "notification", {
+      type: "reshare",
+      postId: original.id,
+      actorId: userId,
+    });
   }
+
+  // SSE: broadcast reshare to followers
+  const followerIds = await getFollowerIds(userId);
+  broadcastToUsers(followerIds, "new_post", {
+    postId: reshare.id,
+    authorId: userId,
+    reshareOf: postId,
+  });
 
   return { ...reshare, apId };
 }
@@ -267,7 +302,13 @@ export async function editPost(
     .where(eq(posts.id, postId))
     .returning();
 
-  return parsePostJson(updated);
+  const parsed = parsePostJson(updated);
+
+  // SSE: notify followers of edit
+  const followerIds = await getFollowerIds(authorId);
+  broadcastToUsers(followerIds, "post_updated", { postId, authorId });
+
+  return parsed;
 }
 
 // ── Read ──
@@ -546,6 +587,11 @@ export async function addReaction(postId: string, userId: string) {
       targetId: postId,
       targetType: "post",
     });
+    sendEvent(post.authorId, "notification", {
+      type: "reaction",
+      postId,
+      actorId: userId,
+    });
   }
 
   return reaction;
@@ -563,10 +609,17 @@ export async function deletePost(postId: string, authorId: string) {
   const post = await db.query.posts.findFirst({
     where: and(eq(posts.id, postId), eq(posts.authorId, authorId)),
   });
-  if (!post) return false;
+  if (!post) return null;
+
+  // Get followers before deleting for SSE broadcast
+  const followerIds = await getFollowerIds(authorId);
 
   await db.delete(posts).where(eq(posts.id, postId));
-  return true;
+
+  // SSE: notify followers of deletion
+  broadcastToUsers(followerIds, "post_deleted", { postId });
+
+  return post;
 }
 
 // ── Pagination Helper ──

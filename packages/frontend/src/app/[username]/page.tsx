@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { apiFetch } from "@/hooks/useApi";
+import { useAuthStore } from "@/stores/auth";
 import styles from "./page.module.css";
 
 interface UserProfile {
@@ -27,6 +29,8 @@ interface UserProfile {
 export default function ProfilePage() {
   const params = useParams();
   const username = (params?.username as string)?.replace("@", "");
+  const currentUser = useAuthStore((s) => s.user);
+  const isOwnProfile = currentUser?.username === username;
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -90,6 +94,22 @@ export default function ProfilePage() {
 
           {profile.profile?.location && (
             <p className={styles.meta}>{profile.profile.location}</p>
+          )}
+
+          {profile.profile?.website && (
+            <p className={styles.meta}>
+              <a href={profile.profile.website} target="_blank" rel="noopener noreferrer">
+                {profile.profile.website}
+              </a>
+            </p>
+          )}
+
+          {isOwnProfile && (
+            <Link href="/profile/edit" className={styles.editLink}>
+              <Button variant="secondary" size="sm">
+                Edit Profile
+              </Button>
+            </Link>
           )}
         </div>
       </Card>

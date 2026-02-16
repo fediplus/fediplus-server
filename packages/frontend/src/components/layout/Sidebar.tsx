@@ -5,15 +5,15 @@ import { usePathname } from "next/navigation";
 import styles from "./Sidebar.module.css";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Home", icon: "home" },
-  { href: "/profile", label: "Profile", icon: "person" },
-  { href: "/circles", label: "Circles", icon: "circles" },
-  { href: "/communities", label: "Communities", icon: "group" },
-  { href: "/collections", label: "Collections", icon: "collection" },
-  { href: "/photos", label: "Photos", icon: "photo" },
-  { href: "/events", label: "Events", icon: "event" },
-  { href: "/hangouts", label: "Hangouts", icon: "videocam" },
-  { href: "/messages", label: "Messages", icon: "chat" },
+  { href: "/", label: "Home", icon: "home", enabled: true },
+  { href: "/profile", label: "Profile", icon: "person", enabled: true },
+  { href: "/circles", label: "Circles", icon: "circles", enabled: true },
+  { href: "/communities", label: "Communities", icon: "group", enabled: true },
+  { href: "/collections", label: "Collections", icon: "collection", enabled: true },
+  { href: "/photos", label: "Photos", icon: "photo", enabled: true },
+  { href: "/events", label: "Events", icon: "event", enabled: false },
+  { href: "/hangouts", label: "Hangouts", icon: "videocam", enabled: false },
+  { href: "/messages", label: "Messages", icon: "chat", enabled: false },
 ] as const;
 
 const ICON_MAP: Record<string, string> = {
@@ -45,6 +45,24 @@ export function Sidebar() {
             item.href === "/"
               ? pathname === "/"
               : pathname.startsWith(item.href);
+
+          if (!item.enabled) {
+            return (
+              <li key={item.href}>
+                <span
+                  className={`${styles.navItem} ${styles.disabled}`}
+                  aria-disabled="true"
+                  title="Coming soon"
+                >
+                  <span className={styles.icon} aria-hidden="true">
+                    {ICON_MAP[item.icon]}
+                  </span>
+                  <span className={styles.navLabel}>{item.label}</span>
+                  <span className={styles.comingSoon}>Soon</span>
+                </span>
+              </li>
+            );
+          }
 
           return (
             <li key={item.href}>

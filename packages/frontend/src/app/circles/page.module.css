@@ -20,6 +20,7 @@
 .controls {
   display: flex;
   gap: var(--space-2);
+  align-items: center;
 }
 
 .viewToggle {
@@ -29,11 +30,69 @@
   padding: 0;
 }
 
+.error {
+  color: var(--color-error, #dc2626);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-error-bg, #fef2f2);
+}
+
 .loading,
 .emptyState {
   text-align: center;
   color: var(--color-text-secondary);
   padding: var(--space-8);
+}
+
+/* Create form */
+.createForm {
+  padding: var(--space-4);
+}
+
+.formHeading {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-3);
+}
+
+.formRow {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.colorPicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.colorLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.colorInput {
+  width: 40px;
+  height: 40px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+/* Layout with detail panel */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .layout {
+    grid-template-columns: 1fr 320px;
+  }
 }
 
 /* Visual (grid) mode */
@@ -54,6 +113,10 @@
 
 .circleCard:hover {
   box-shadow: var(--shadow-2);
+}
+
+.circleCard.selected {
+  box-shadow: 0 0 0 2px var(--color-primary, #4285f4);
 }
 
 .circleIndicator {
@@ -84,6 +147,25 @@
   color: var(--color-text-secondary);
 }
 
+.deleteBtn {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  background: none;
+  border: none;
+  font-size: var(--text-lg);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: var(--space-1);
+  line-height: 1;
+  border-radius: var(--radius-sm);
+}
+
+.deleteBtn:hover {
+  color: var(--color-error, #dc2626);
+  background: var(--color-bg-hover);
+}
+
 /* List mode */
 .listView {
   list-style: none;
@@ -97,6 +179,12 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  position: relative;
+}
+
+.listCard.selected {
+  box-shadow: 0 0 0 2px var(--color-primary, #4285f4);
 }
 
 .listColor {
@@ -109,6 +197,7 @@
 .listInfo {
   display: flex;
   flex-direction: column;
+  flex: 1;
 }
 
 .listName {
@@ -118,4 +207,120 @@
 .listMeta {
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
+}
+
+/* Detail panel */
+.detailPanel {
+  padding: var(--space-4);
+}
+
+.detailHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.detailTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  border-left: 3px solid;
+  padding-left: var(--space-2);
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  font-size: var(--text-xl);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: var(--space-1);
+  line-height: 1;
+}
+
+.closeBtn:hover {
+  color: var(--color-text-primary);
+}
+
+.addMemberForm {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+  margin-bottom: var(--space-4);
+}
+
+.emptyMembers {
+  text-align: center;
+  color: var(--color-text-secondary);
+  padding: var(--space-4);
+}
+
+.memberList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.memberItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: grab;
+}
+
+.memberItem:hover {
+  background: var(--color-bg-hover);
+}
+
+.memberAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary, #4285f4);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+}
+
+.memberInfo {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.memberName {
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memberUsername {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.removeMemberBtn {
+  background: none;
+  border: none;
+  font-size: var(--text-lg);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: var(--space-1);
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.removeMemberBtn:hover {
+  color: var(--color-error, #dc2626);
+  background: var(--color-bg-hover);
 }

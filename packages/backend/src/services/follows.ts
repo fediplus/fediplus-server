@@ -3,6 +3,7 @@ import { db } from "../db/connection.js";
 import { follows, blocks } from "../db/schema/follows.js";
 import { users, profiles } from "../db/schema/users.js";
 import { notifications } from "../db/schema/notifications.js";
+import { sendEvent } from "../realtime/sse.js";
 
 export async function followUser(followerId: string, followingId: string) {
   if (followerId === followingId) {
@@ -43,6 +44,11 @@ export async function followUser(followerId: string, followingId: string) {
 
   await db.insert(notifications).values({
     userId: followingId,
+    type: "follow",
+    actorId: followerId,
+  });
+
+  sendEvent(followingId, "notification", {
     type: "follow",
     actorId: followerId,
   });
