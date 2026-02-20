@@ -47,7 +47,7 @@ function toWebRequest(fastifyReq: FastifyRequest): Request {
   // the body is only needed when actually processing an inbox delivery.
   const isInboxRoute = /\/inbox\b/.test(fastifyReq.url);
 
-  let body: BodyInit | undefined;
+  let body: string | ReadableStream | undefined;
   if (hasBody && isInboxRoute) {
     if (fastifyReq.body !== undefined) {
       body =
