@@ -5,10 +5,15 @@ import {
   MAX_DISPLAY_NAME_LENGTH,
   MAX_CIRCLE_NAME_LENGTH,
   MAX_MEDIA_PER_POST,
+  MAX_EVENT_NAME_LENGTH,
+  MAX_EVENT_DESCRIPTION_LENGTH,
+  MAX_MESSAGE_LENGTH,
+  MAX_CONVERSATION_PARTICIPANTS,
   POST_VISIBILITY,
   ACTOR_TYPES,
   REACTION_TYPES,
   RSVP_STATUS,
+  EVENT_VISIBILITY,
 } from "./constants.js";
 
 export const registerSchema = z.object({
@@ -90,5 +95,62 @@ export type CreateCircleInput = z.infer<typeof createCircleSchema>;
 export type UpdateCircleInput = z.infer<typeof updateCircleSchema>;
 export type AddCircleMembersInput = z.infer<typeof addCircleMembersSchema>;
 export type CreatePostInput = z.infer<typeof createPostSchema>;
+// ── Event schemas ──
+
+export const createEventSchema = z.object({
+  name: z.string().min(1).max(MAX_EVENT_NAME_LENGTH),
+  description: z.string().max(MAX_EVENT_DESCRIPTION_LENGTH).optional(),
+  startDate: z.string().datetime(),
+  endDate: z.string().datetime().optional(),
+  location: z.string().max(200).optional(),
+  visibility: z.enum(EVENT_VISIBILITY).default("public"),
+  coverMediaId: z.string().uuid().optional(),
+});
+
+export const updateEventSchema = z.object({
+  name: z.string().min(1).max(MAX_EVENT_NAME_LENGTH).optional(),
+  description: z.string().max(MAX_EVENT_DESCRIPTION_LENGTH).optional(),
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional().nullable(),
+  location: z.string().max(200).optional(),
+  visibility: z.enum(EVENT_VISIBILITY).optional(),
+  coverMediaId: z.string().uuid().optional().nullable(),
+});
+
+export const rsvpSchema = z.object({
+  status: z.enum(RSVP_STATUS),
+});
+
+export const inviteToEventSchema = z.object({
+  circleIds: z.array(z.string().uuid()).min(1),
+});
+
+// ── Message schemas ──
+
+export const createConversationSchema = z.object({
+  participantIds: z
+    .array(z.string().uuid())
+    .min(1)
+    .max(MAX_CONVERSATION_PARTICIPANTS - 1),
+});
+
+export const sendMessageSchema = z.object({
+  ciphertext: z.string().min(1).max(MAX_MESSAGE_LENGTH * 4),
+  ephemeralPublicKey: z.string().min(1),
+  iv: z.string().min(1),
+});
+
+export const setupEncryptionSchema = z.object({
+  encryptionPublicKey: z.string().min(1),
+  encryptionPrivateKeyEnc: z.string().min(1),
+});
+
 export type ReactionInput = z.infer<typeof reactionSchema>;
 export type CursorPaginationInput = z.infer<typeof cursorPaginationSchema>;
+export type CreateEventInput = z.infer<typeof createEventSchema>;
+export type UpdateEventInput = z.infer<typeof updateEventSchema>;
+export type RsvpInput = z.infer<typeof rsvpSchema>;
+export type InviteToEventInput = z.infer<typeof inviteToEventSchema>;
+export type CreateConversationInput = z.infer<typeof createConversationSchema>;
+export type SendMessageInput = z.infer<typeof sendMessageSchema>;
+export type SetupEncryptionInput = z.infer<typeof setupEncryptionSchema>;

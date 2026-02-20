@@ -15,6 +15,9 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "comment",
   "mention",
   "reshare",
+  "event_invited",
+  "event_rsvp",
+  "message",
 ]);
 
 export const notifications = pgTable("notifications", {

@@ -29,6 +29,8 @@ export const users = pgTable("users", {
   followingUri: varchar("following_uri", { length: 2048 }).notNull(),
   publicKey: text("public_key").notNull(),
   privateKey: text("private_key"),
+  encryptionPublicKey: text("encryption_public_key"),
+  encryptionPrivateKeyEnc: text("encryption_private_key_enc"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

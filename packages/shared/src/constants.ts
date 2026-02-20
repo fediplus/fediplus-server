@@ -31,6 +31,9 @@ export const NOTIFICATION_TYPES = [
   "comment",
   "mention",
   "reshare",
+  "event_invited",
+  "event_rsvp",
+  "message",
 ] as const;
 
 export const RSVP_STATUS = ["going", "maybe", "not_going"] as const;
@@ -42,3 +45,10 @@ export const MAX_CIRCLE_NAME_LENGTH = 50;
 export const MAX_CIRCLES_PER_USER = 100;
 export const MAX_CIRCLE_MEMBERS = 5000;
 export const MAX_MEDIA_PER_POST = 50;
+
+export const EVENT_VISIBILITY = ["public", "private"] as const;
+
+export const MAX_EVENT_NAME_LENGTH = 200;
+export const MAX_EVENT_DESCRIPTION_LENGTH = 5000;
+export const MAX_MESSAGE_LENGTH = 5000;
+export const MAX_CONVERSATION_PARTICIPANTS = 10;

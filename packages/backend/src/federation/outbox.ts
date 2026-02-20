@@ -9,6 +9,7 @@ import {
   Block,
   Note,
   type Federation,
+  type Recipient,
 } from "@fedify/fedify";
 import { Temporal } from "@js-temporal/polyfill";
 import { eq, and } from "drizzle-orm";
@@ -285,6 +286,182 @@ export async function sendUndoFollow(
   await ctx.sendActivity(
     { identifier: follower.username },
     "followers",
+    activity
+  );
+}
+
+// ── Send Create Event (as Note) ──
+
+export async function sendCreateEvent(
+  userId: string,
+  event: {
+    id: string;
+    name: string;
+    description: string;
+    apId: string | null;
+    startDate: Date;
+    location: string | null;
+  }
+) {
+  const author = await getLocalUser(userId);
+  if (!author) return;
+
+  const federation = getFederation();
+  const ctx = federation.createContext(new URL(config.publicUrl), undefined as void);
+
+  // Represent event as a Note with structured content
+  const content = [
+    `<h2>${event.name}</h2>`,
+    event.description ? `<p>${event.description}</p>` : "",
+    `<p>Start: ${event.startDate.toISOString()}</p>`,
+    event.location ? `<p>Location: ${event.location}</p>` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const note = new Note({
+    id: event.apId ? new URL(event.apId) : undefined,
+    content,
+    attribution: new URL(author.actorUri),
+    published: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+    url: event.apId ? new URL(event.apId) : undefined,
+  });
+
+  const activity = new Create({
+    id: new URL(`${config.publicUrl}/activities/create-event/${event.id}`),
+    actor: new URL(author.actorUri),
+    object: note,
+  });
+
+  await ctx.sendActivity(
+    { identifier: author.username },
+    "followers",
+    activity
+  );
+}
+
+// ── Send Update Event ──
+
+export async function sendUpdateEvent(
+  userId: string,
+  event: {
+    id: string;
+    name: string;
+    description: string;
+    apId: string | null;
+    startDate: Date;
+    location: string | null;
+  }
+) {
+  const author = await getLocalUser(userId);
+  if (!author) return;
+
+  const federation = getFederation();
+  const ctx = federation.createContext(new URL(config.publicUrl), undefined as void);
+
+  const content = [
+    `<h2>${event.name}</h2>`,
+    event.description ? `<p>${event.description}</p>` : "",
+    `<p>Start: ${event.startDate.toISOString()}</p>`,
+    event.location ? `<p>Location: ${event.location}</p>` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const note = new Note({
+    id: event.apId ? new URL(event.apId) : undefined,
+    content,
+    attribution: new URL(author.actorUri),
+    updated: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+  });
+
+  const activity = new Update({
+    id: new URL(`${config.publicUrl}/activities/update-event/${event.id}/${Date.now()}`),
+    actor: new URL(author.actorUri),
+    object: note,
+  });
+
+  await ctx.sendActivity(
+    { identifier: author.username },
+    "followers",
+    activity
+  );
+}
+
+// ── Send Delete Event ──
+
+export async function sendDeleteEvent(userId: string, eventApId: string) {
+  const author = await getLocalUser(userId);
+  if (!author) return;
+
+  const federation = getFederation();
+  const ctx = federation.createContext(new URL(config.publicUrl), undefined as void);
+
+  const activity = new APDelete({
+    actor: new URL(author.actorUri),
+    object: new URL(eventApId),
+  });
+
+  await ctx.sendActivity(
+    { identifier: author.username },
+    "followers",
+    activity
+  );
+}
+
+// ── Send Direct Message (encrypted) ──
+
+export async function sendDirectMessage(
+  userId: string,
+  recipientIds: string[],
+  encryptedPayload: {
+    ciphertext: string;
+    ephemeralPublicKey: string;
+    iv: string;
+  }
+) {
+  const sender = await getLocalUser(userId);
+  if (!sender) return;
+
+  // Resolve recipients to their actor URIs and inbox URIs
+  const recipients = await Promise.all(
+    recipientIds.map((id) =>
+      db.query.users.findFirst({ where: eq(users.id, id) })
+    )
+  );
+
+  const remoteRecipients: Recipient[] = recipients
+    .filter((r): r is NonNullable<typeof r> => r != null && !r.isLocal)
+    .map((r) => ({
+      id: new URL(r.actorUri),
+      inboxId: new URL(r.inboxUri),
+    }));
+
+  if (remoteRecipients.length === 0) return;
+
+  const federation = getFederation();
+  const ctx = federation.createContext(new URL(config.publicUrl), undefined as void);
+
+  // Wrap encrypted payload in a Note for federation
+  const content = JSON.stringify(encryptedPayload);
+
+  const note = new Note({
+    content,
+    attribution: new URL(sender.actorUri),
+    tos: remoteRecipients.map((r) => r.id!),
+    published: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+  });
+
+  const activity = new Create({
+    id: new URL(`${config.publicUrl}/activities/dm/${crypto.randomUUID()}`),
+    actor: new URL(sender.actorUri),
+    object: note,
+    tos: remoteRecipients.map((r) => r.id!),
+  });
+
+  await ctx.sendActivity(
+    { identifier: sender.username },
+    remoteRecipients,
     activity
   );
 }

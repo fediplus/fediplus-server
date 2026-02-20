@@ -24,6 +24,9 @@ export function useSSE(onEvent: SSEHandler) {
       "post_updated",
       "post_deleted",
       "reaction",
+      "event_rsvp",
+      "event_photo",
+      "new_message",
     ];
 
     for (const event of events) {

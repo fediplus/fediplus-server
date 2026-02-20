@@ -6,3 +6,5 @@ export * from "./notifications";
 export * from "./communities";
 export * from "./collections";
 export * from "./media";
+export * from "./events";
+export * from "./messages";

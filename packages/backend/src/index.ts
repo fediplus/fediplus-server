@@ -17,6 +17,8 @@ import { streamRoutes } from "./routes/api/v1/stream.js";
 import { communityRoutes } from "./routes/api/v1/communities.js";
 import { collectionRoutes } from "./routes/api/v1/collections.js";
 import { mediaRoutes } from "./routes/api/v1/media.js";
+import { eventRoutes } from "./routes/api/v1/events.js";
+import { messageRoutes } from "./routes/api/v1/messages.js";
 
 async function main() {
   const app = Fastify({
@@ -50,6 +52,8 @@ async function main() {
   await app.register(communityRoutes);
   await app.register(collectionRoutes);
   await app.register(mediaRoutes);
+  await app.register(eventRoutes);
+  await app.register(messageRoutes);
 
   // Serve local media files in local storage mode
   if (config.storage.type === "local") {
