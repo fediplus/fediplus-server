@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
-import fedifyPlugin from "@fedify/fastify";
+import fedifyPlugin from "./federation/fastify-plugin.js";
 import { config } from "./config.js";
 import { setupFederation } from "./federation/setup.js";
 import { errorHandler } from "./middleware/error-handler.js";
