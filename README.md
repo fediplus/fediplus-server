@@ -16,7 +16,7 @@ Fedi+ is a federated social platform that brings back the best features of Googl
 - **Reshares** — Boost posts to your followers, federated as ActivityPub Announce activities.
 - **Communities** — Group actors for topic-based discussion. Public or private, with owner/moderator/member roles and optional post approval.
 - **Collections** — Pinterest-style curation of posts into ordered, named collections.
-- **Media** — Multi-file upload (up to 50 per post) with automatic image processing (resize, thumbnail generation, blurhash placeholders), alt text support, and photo albums. S3-compatible storage via MinIO.
+- **Media** — Multi-file upload (up to 50 per post) with automatic image processing (resize, thumbnail generation, blurhash placeholders), alt text support, and photo albums. Local filesystem storage for development; S3-compatible storage for production.
 - **Photos** — Dedicated photo gallery page with grid layout, album navigation, and a keyboard-accessible lightbox viewer.
 - **Notifications** — Real-time notifications for follows, reactions, comments, mentions, and reshares, delivered via SSE.
 - **Federation** — Full ActivityPub support via [Fedify](https://fedify.dev/): WebFinger, NodeInfo, HTTP Signatures, Object Integrity Proofs, Follow/Accept/Reject/Block activities, inbox/outbox.
@@ -44,7 +44,7 @@ Fedi+ is a federated social platform that brings back the best features of Googl
 | Frontend | React 19, Next.js 15 (App Router), Radix UI, Zustand |
 | Database | PostgreSQL 16 |
 | Cache/Queue | Redis 7 + BullMQ |
-| Media Storage | MinIO (S3-compatible) |
+| Media Storage | Local filesystem (dev) / S3-compatible (prod) |
 | Image Processing | Sharp |
 | Styling | CSS Modules with custom properties |
 | Testing | Vitest + Playwright |
@@ -68,7 +68,6 @@ fediplus/
 - **Node.js** 20 or later
 - **PostgreSQL** 16
 - **Redis** 7
-- **MinIO** (or any S3-compatible storage)
 
 ## Local Development
 
@@ -82,7 +81,7 @@ npm install
 
 ### 2. Start services
 
-You need PostgreSQL, Redis, and MinIO running. Pick one of:
+You need PostgreSQL and Redis running. Pick one of:
 
 **Option A: Docker Compose** (if you have Docker)
 
@@ -90,11 +89,11 @@ You need PostgreSQL, Redis, and MinIO running. Pick one of:
 docker compose up -d
 ```
 
-This starts PostgreSQL on port 5432, Redis on port 6379, and MinIO on ports 9000/9001 with the default credentials from `.env.example`.
+This starts PostgreSQL on port 5432 and Redis on port 6379 with the default credentials from `.env.example`.
 
 **Option B: Install natively**
 
-Install PostgreSQL, Redis, and MinIO using your OS package manager or official installers.
+Install PostgreSQL and Redis using your OS package manager or official installers.
 
 #### PostgreSQL
 
@@ -130,32 +129,7 @@ psql -U postgres -c "CREATE DATABASE fediplus OWNER fediplus;"
 
 **macOS:** `brew install redis && brew services start redis`
 
-#### MinIO
-
-**Windows:** Download from https://min.io/download#/windows, then run:
-
-```cmd
-minio.exe server C:\minio-data --console-address ":9001"
-```
-
-**Linux:**
-```bash
-wget https://dl.min.io/server/minio/release/linux-amd64/minio
-chmod +x minio
-./minio server ./data --console-address ":9001"
-```
-
-**macOS:**
-```bash
-brew install minio/stable/minio
-minio server ./data --console-address ":9001"
-```
-
-After starting MinIO, create the media bucket:
-```cmd
-mc alias set local http://localhost:9000 fediplus fediplus-secret
-mc mb local/fediplus-media
-```
+Media storage uses the local filesystem by default — no extra services needed. If you prefer S3-compatible storage (MinIO, AWS S3, etc.), set `STORAGE_TYPE=s3` in your `.env` and configure the `S3_*` variables.
 
 ### 3. Configure environment
 
@@ -210,6 +184,7 @@ For production, you would add the Fedi+ backend and frontend as services to the 
    PUBLIC_URL=https://your-domain.com
    JWT_SECRET=generate-a-strong-random-secret
    DATABASE_URL=postgresql://fediplus:strong-password@localhost:5432/fediplus
+   STORAGE_TYPE=s3
    S3_ENDPOINT=http://localhost:9000
    S3_ACCESS_KEY=your-minio-access-key
    S3_SECRET_KEY=your-minio-secret-key
@@ -278,7 +253,7 @@ For production, you would add the Fedi+ backend and frontend as services to the 
            proxy_read_timeout 86400s;
        }
 
-       # Media files (proxy to MinIO, or serve directly if on same host)
+       # Media files (proxy to MinIO when using S3 storage)
        location /media/ {
            proxy_pass http://127.0.0.1:9000/fediplus-media/;
        }
@@ -295,14 +270,14 @@ For production, you would add the Fedi+ backend and frontend as services to the 
    sudo apt update
    sudo apt install -y postgresql-16 redis-server
 
-   # MinIO
-   wget https://dl.min.io/server/minio/release/linux-amd64/minio
-   chmod +x minio
-   sudo mv minio /usr/local/bin/
-
    # Node.js (via nvm or NodeSource)
    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
    sudo apt install -y nodejs
+
+   # MinIO (optional, only if using S3 storage)
+   wget https://dl.min.io/server/minio/release/linux-amd64/minio
+   chmod +x minio
+   sudo mv minio /usr/local/bin/
    ```
 
 2. **Configure PostgreSQL:**
@@ -313,29 +288,11 @@ For production, you would add the Fedi+ backend and frontend as services to the 
 
 3. **Create systemd services:**
 
-   `/etc/systemd/system/minio.service`:
-   ```ini
-   [Unit]
-   Description=MinIO Object Storage
-   After=network.target
-
-   [Service]
-   User=minio
-   Group=minio
-   Environment="MINIO_ROOT_USER=your-access-key"
-   Environment="MINIO_ROOT_PASSWORD=your-secret-key"
-   ExecStart=/usr/local/bin/minio server /var/lib/minio --console-address ":9001"
-   Restart=always
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
    `/etc/systemd/system/fediplus-backend.service`:
    ```ini
    [Unit]
    Description=Fedi+ Backend
-   After=network.target postgresql.service redis.service minio.service
+   After=network.target postgresql.service redis.service
 
    [Service]
    User=fediplus
@@ -379,16 +336,12 @@ For production, you would add the Fedi+ backend and frontend as services to the 
    npm install --production=false
    npm run build
 
-   # Create MinIO bucket
-   mc alias set local http://localhost:9000 your-access-key your-secret-key
-   mc mb local/fediplus-media
-
    # Run migrations
    npm run db:migrate
 
    # Enable and start services
    sudo systemctl daemon-reload
-   sudo systemctl enable --now minio fediplus-backend fediplus-frontend
+   sudo systemctl enable --now fediplus-backend fediplus-frontend
    ```
 
 5. **Set up a reverse proxy** with nginx or Caddy (see the nginx config above) and configure HTTPS with Let's Encrypt:
@@ -409,7 +362,9 @@ For production, you would add the Fedi+ backend and frontend as services to the 
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
 | `JWT_SECRET` | `change-me-in-production` | Secret for signing JWT tokens |
 | `JWT_EXPIRY` | `7d` | JWT token lifetime |
-| `S3_ENDPOINT` | `http://localhost:9000` | MinIO/S3 endpoint |
+| `STORAGE_TYPE` | `local` | `local` (filesystem) or `s3` (S3-compatible) |
+| `STORAGE_LOCAL_PATH` | `./data/media` | Directory for local media storage |
+| `S3_ENDPOINT` | `http://localhost:9000` | S3 endpoint (only when `STORAGE_TYPE=s3`) |
 | `S3_ACCESS_KEY` | `fediplus` | S3 access key |
 | `S3_SECRET_KEY` | `fediplus-secret` | S3 secret key |
 | `S3_BUCKET` | `fediplus-media` | S3 bucket name |

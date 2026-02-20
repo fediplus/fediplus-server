@@ -19,6 +19,11 @@ export const config = {
     expiry: process.env.JWT_EXPIRY ?? "7d",
   },
 
+  storage: {
+    type: (process.env.STORAGE_TYPE ?? "local") as "local" | "s3",
+    localPath: process.env.STORAGE_LOCAL_PATH ?? "./data/media",
+  },
+
   s3: {
     endpoint: process.env.S3_ENDPOINT ?? "http://localhost:9000",
     accessKey: process.env.S3_ACCESS_KEY ?? "fediplus",

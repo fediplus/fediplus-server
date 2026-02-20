@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { mkdir, writeFile, unlink } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import sharp from "sharp";
 import {
   S3Client,
@@ -10,15 +12,22 @@ import { db } from "../db/connection.js";
 import { media, albums } from "../db/schema/media.js";
 import { config } from "../config.js";
 
-const s3 = new S3Client({
-  endpoint: config.s3.endpoint,
-  region: config.s3.region,
-  credentials: {
-    accessKeyId: config.s3.accessKey,
-    secretAccessKey: config.s3.secretKey,
-  },
-  forcePathStyle: true,
-});
+// Lazy-init S3 client only when needed
+let _s3: S3Client | null = null;
+function getS3(): S3Client {
+  if (!_s3) {
+    _s3 = new S3Client({
+      endpoint: config.s3.endpoint,
+      region: config.s3.region,
+      credentials: {
+        accessKeyId: config.s3.accessKey,
+        secretAccessKey: config.s3.secretKey,
+      },
+      forcePathStyle: true,
+    });
+  }
+  return _s3;
+}
 
 const ALLOWED_MIME_TYPES = [
   "image/jpeg",
@@ -45,6 +54,56 @@ interface UploadResult {
   height: number | null;
   mimeType: string;
   size: number;
+}
+
+// Storage helpers
+
+async function storeFile(
+  key: string,
+  body: Buffer,
+  contentType: string
+): Promise<void> {
+  if (config.storage.type === "local") {
+    const filePath = resolve(config.storage.localPath, key);
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, body);
+  } else {
+    await getS3().send(
+      new PutObjectCommand({
+        Bucket: config.s3.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      })
+    );
+  }
+}
+
+async function deleteFile(key: string): Promise<void> {
+  if (config.storage.type === "local") {
+    const filePath = resolve(config.storage.localPath, key);
+    await unlink(filePath).catch(() => {});
+  } else {
+    await getS3()
+      .send(new DeleteObjectCommand({ Bucket: config.s3.bucket, Key: key }))
+      .catch(() => {});
+  }
+}
+
+const localBaseUrl = `http://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port}`;
+
+function buildMediaUrl(key: string): string {
+  if (config.storage.type === "local") {
+    return `${localBaseUrl}/media/${key}`;
+  }
+  return `${config.s3.endpoint}/${config.s3.bucket}/${key}`;
+}
+
+function extractKey(url: string): string {
+  if (config.storage.type === "local") {
+    return url.replace(`${localBaseUrl}/media/`, "");
+  }
+  return url.replace(`${config.s3.endpoint}/${config.s3.bucket}/`, "");
 }
 
 export async function uploadMedia(
@@ -105,8 +164,8 @@ export async function uploadMedia(
       .toBuffer();
 
     const thumbnailKey = `media/${userId}/thumb_${id}.webp`;
-    await uploadToS3(thumbnailKey, thumbnailBuffer, "image/webp");
-    thumbnailUrl = `${config.s3.endpoint}/${config.s3.bucket}/${thumbnailKey}`;
+    await storeFile(thumbnailKey, thumbnailBuffer, "image/webp");
+    thumbnailUrl = buildMediaUrl(thumbnailKey);
 
     // Generate blurhash (small version for fast encoding)
     try {
@@ -127,9 +186,9 @@ export async function uploadMedia(
     }
   }
 
-  // Upload original/processed file to S3
-  await uploadToS3(key, processedBuffer, mimeType);
-  const url = `${config.s3.endpoint}/${config.s3.bucket}/${key}`;
+  // Upload original/processed file
+  await storeFile(key, processedBuffer, mimeType);
+  const url = buildMediaUrl(key);
 
   const mediaType = mimeType.startsWith("image/")
     ? "image"
@@ -215,25 +274,13 @@ export async function deleteMedia(mediaId: string, userId: string) {
   });
   if (!record) return false;
 
-  // Delete from S3
-  const key = record.url.replace(
-    `${config.s3.endpoint}/${config.s3.bucket}/`,
-    ""
-  );
-  await s3
-    .send(new DeleteObjectCommand({ Bucket: config.s3.bucket, Key: key }))
-    .catch(() => {});
+  // Delete files
+  const key = extractKey(record.url);
+  await deleteFile(key);
 
   if (record.thumbnailUrl) {
-    const thumbKey = record.thumbnailUrl.replace(
-      `${config.s3.endpoint}/${config.s3.bucket}/`,
-      ""
-    );
-    await s3
-      .send(
-        new DeleteObjectCommand({ Bucket: config.s3.bucket, Key: thumbKey })
-      )
-      .catch(() => {});
+    const thumbKey = extractKey(record.thumbnailUrl);
+    await deleteFile(thumbKey);
   }
 
   await db.delete(media).where(eq(media.id, mediaId));
@@ -295,21 +342,4 @@ export async function getAlbumPhotos(albumId: string) {
     .from(media)
     .where(and(eq(media.albumId, albumId), eq(media.type, "image")))
     .orderBy(media.createdAt);
-}
-
-// S3 helper
-
-async function uploadToS3(
-  key: string,
-  body: Buffer,
-  contentType: string
-) {
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: config.s3.bucket,
-      Key: key,
-      Body: body,
-      ContentType: contentType,
-    })
-  );
 }

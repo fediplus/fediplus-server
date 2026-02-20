@@ -1,5 +1,7 @@
+import { resolve } from "node:path";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import fastifyStatic from "@fastify/static";
 import fedifyPlugin from "@fedify/fastify";
 import { config } from "./config.js";
 import { setupFederation } from "./federation/setup.js";
@@ -48,6 +50,18 @@ async function main() {
   await app.register(communityRoutes);
   await app.register(collectionRoutes);
   await app.register(mediaRoutes);
+
+  // Serve local media files in local storage mode
+  if (config.storage.type === "local") {
+    const { mkdirSync } = await import("node:fs");
+    const root = resolve(config.storage.localPath);
+    mkdirSync(root, { recursive: true });
+    await app.register(fastifyStatic, {
+      root,
+      prefix: "/media/",
+      decorateReply: false,
+    });
+  }
 
   // Health check
   app.get("/health", async () => ({ status: "ok", version: "0.1.0" }));
