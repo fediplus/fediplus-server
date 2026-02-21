@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
+import fastifyWebSocket from "@fastify/websocket";
 import fedifyPlugin from "./federation/fastify-plugin.js";
 import { config } from "./config.js";
 import { setupFederation } from "./federation/setup.js";
@@ -19,6 +20,9 @@ import { collectionRoutes } from "./routes/api/v1/collections.js";
 import { mediaRoutes } from "./routes/api/v1/media.js";
 import { eventRoutes } from "./routes/api/v1/events.js";
 import { messageRoutes } from "./routes/api/v1/messages.js";
+import { hangoutRoutes } from "./routes/api/v1/hangouts.js";
+import { hangoutSignalingRoutes } from "./routes/api/v1/hangout-signaling.js";
+import { initializeWorkers } from "./mediasoup/workers.js";
 
 async function main() {
   const app = Fastify({
@@ -35,6 +39,9 @@ async function main() {
 
   // Error handler
   app.setErrorHandler(errorHandler);
+
+  // WebSocket support
+  await app.register(fastifyWebSocket);
 
   // Federation (Fedify)
   const federation = setupFederation();
@@ -54,6 +61,8 @@ async function main() {
   await app.register(mediaRoutes);
   await app.register(eventRoutes);
   await app.register(messageRoutes);
+  await app.register(hangoutRoutes);
+  await app.register(hangoutSignalingRoutes);
 
   // Serve local media files in local storage mode
   if (config.storage.type === "local") {
@@ -69,6 +78,9 @@ async function main() {
 
   // Health check
   app.get("/health", async () => ({ status: "ok", version: "0.1.0" }));
+
+  // Initialize mediasoup workers
+  await initializeWorkers();
 
   // Start
   await app.listen({ host: config.host, port: config.port });

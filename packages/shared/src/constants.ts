@@ -52,3 +52,7 @@ export const MAX_EVENT_NAME_LENGTH = 200;
 export const MAX_EVENT_DESCRIPTION_LENGTH = 5000;
 export const MAX_MESSAGE_LENGTH = 5000;
 export const MAX_CONVERSATION_PARTICIPANTS = 10;
+
+export const HANGOUT_VISIBILITY = ["public", "private"] as const;
+export const MAX_HANGOUT_PARTICIPANTS = 10;
+export const HANGOUT_STATUS = ["waiting", "active", "ended"] as const;

@@ -27,6 +27,12 @@ export function useSSE(onEvent: SSEHandler) {
       "event_rsvp",
       "event_photo",
       "new_message",
+      "participant_joined",
+      "participant_left",
+      "media_state_changed",
+      "stream_started",
+      "stream_stopped",
+      "hangout_ended",
     ];
 
     for (const event of events) {

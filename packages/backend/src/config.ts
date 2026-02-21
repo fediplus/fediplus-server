@@ -32,6 +32,13 @@ export const config = {
     region: process.env.S3_REGION ?? "us-east-1",
   },
 
+  mediasoup: {
+    listenIp: process.env.MEDIASOUP_LISTEN_IP ?? "0.0.0.0",
+    announcedIp: process.env.MEDIASOUP_ANNOUNCED_IP ?? "127.0.0.1",
+    rtcMinPort: parseInt(process.env.RTC_MIN_PORT ?? "40000"),
+    rtcMaxPort: parseInt(process.env.RTC_MAX_PORT ?? "49999"),
+  },
+
   get domain() {
     const url = new URL(this.publicUrl);
     return url.host;

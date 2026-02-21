@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { href: "/collections", label: "Collections", icon: "collection", enabled: true },
   { href: "/photos", label: "Photos", icon: "photo", enabled: true },
   { href: "/events", label: "Events", icon: "event", enabled: true },
-  { href: "/hangouts", label: "Hangouts", icon: "videocam", enabled: false },
+  { href: "/hangouts", label: "Hangouts", icon: "videocam", enabled: true },
   { href: "/messages", label: "Messages", icon: "chat", enabled: true },
 ] as const;
 

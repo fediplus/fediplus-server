@@ -9,11 +9,13 @@ import {
   MAX_EVENT_DESCRIPTION_LENGTH,
   MAX_MESSAGE_LENGTH,
   MAX_CONVERSATION_PARTICIPANTS,
+  MAX_HANGOUT_PARTICIPANTS,
   POST_VISIBILITY,
   ACTOR_TYPES,
   REACTION_TYPES,
   RSVP_STATUS,
   EVENT_VISIBILITY,
+  HANGOUT_VISIBILITY,
 } from "./constants.js";
 
 export const registerSchema = z.object({
@@ -144,6 +146,33 @@ export const setupEncryptionSchema = z.object({
   encryptionPublicKey: z.string().min(1),
   encryptionPrivateKeyEnc: z.string().min(1),
 });
+
+// ── Hangout schemas ──
+
+export const createHangoutSchema = z.object({
+  name: z.string().max(100).optional(),
+  visibility: z.enum(HANGOUT_VISIBILITY).default("public"),
+  maxParticipants: z.coerce
+    .number()
+    .int()
+    .min(2)
+    .max(MAX_HANGOUT_PARTICIPANTS)
+    .default(MAX_HANGOUT_PARTICIPANTS),
+});
+
+export const startStreamSchema = z.object({
+  rtmpUrl: z.string().min(1).max(2048),
+});
+
+export const updateMediaStateSchema = z.object({
+  isMuted: z.boolean().optional(),
+  isCameraOff: z.boolean().optional(),
+  isScreenSharing: z.boolean().optional(),
+});
+
+export type CreateHangoutInput = z.infer<typeof createHangoutSchema>;
+export type StartStreamInput = z.infer<typeof startStreamSchema>;
+export type UpdateMediaStateInput = z.infer<typeof updateMediaStateSchema>;
 
 export type ReactionInput = z.infer<typeof reactionSchema>;
 export type CursorPaginationInput = z.infer<typeof cursorPaginationSchema>;

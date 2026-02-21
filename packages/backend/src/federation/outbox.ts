@@ -466,6 +466,70 @@ export async function sendDirectMessage(
   );
 }
 
+// ── Send Create Hangout (as Note) ──
+
+export async function sendCreateHangout(
+  userId: string,
+  hangout: {
+    id: string;
+    name: string | null;
+    apId: string | null;
+  }
+) {
+  const author = await getLocalUser(userId);
+  if (!author) return;
+
+  const federation = getFederation();
+  const ctx = federation.createContext(new URL(config.publicUrl), undefined as void);
+
+  const joinUrl = `${config.publicUrl}/hangouts/${hangout.id}`;
+  const content = [
+    `<h2>${hangout.name ?? "Hangout"}</h2>`,
+    `<p>Join the hangout: <a href="${joinUrl}">${joinUrl}</a></p>`,
+  ].join("\n");
+
+  const note = new Note({
+    id: hangout.apId ? new URL(hangout.apId) : undefined,
+    content,
+    attribution: new URL(author.actorUri),
+    published: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+    url: hangout.apId ? new URL(hangout.apId) : undefined,
+  });
+
+  const activity = new Create({
+    id: new URL(`${config.publicUrl}/activities/create-hangout/${hangout.id}`),
+    actor: new URL(author.actorUri),
+    object: note,
+  });
+
+  await ctx.sendActivity(
+    { identifier: author.username },
+    "followers",
+    activity
+  );
+}
+
+// ── Send End Hangout ──
+
+export async function sendEndHangout(userId: string, hangoutApId: string) {
+  const author = await getLocalUser(userId);
+  if (!author) return;
+
+  const federation = getFederation();
+  const ctx = federation.createContext(new URL(config.publicUrl), undefined as void);
+
+  const activity = new APDelete({
+    actor: new URL(author.actorUri),
+    object: new URL(hangoutApId),
+  });
+
+  await ctx.sendActivity(
+    { identifier: author.username },
+    "followers",
+    activity
+  );
+}
+
 // ── Send Block ──
 
 export async function sendBlock(blockerId: string, blockedId: string) {
