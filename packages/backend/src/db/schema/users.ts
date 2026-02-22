@@ -14,11 +14,17 @@ export const actorTypeEnum = pgEnum("actor_type", [
   "Service",
 ]);
 
+export const tokenTypeEnum = pgEnum("token_type", [
+  "verification",
+  "reset",
+]);
+
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   username: varchar("username", { length: 30 }).notNull().unique(),
   email: varchar("email", { length: 255 }).unique(),
   passwordHash: varchar("password_hash", { length: 255 }),
+  emailVerified: boolean("email_verified").notNull().default(false),
   isLocal: boolean("is_local").notNull().default(true),
   domain: varchar("domain", { length: 255 }),
   actorType: actorTypeEnum("actor_type").notNull().default("Person"),
@@ -35,6 +41,19 @@ export const users = pgTable("users", {
     .notNull()
     .defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const emailTokens = pgTable("email_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+  type: tokenTypeEnum("type").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });

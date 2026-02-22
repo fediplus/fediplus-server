@@ -32,6 +32,15 @@ export const config = {
     region: process.env.S3_REGION ?? "us-east-1",
   },
 
+  smtp: {
+    host: process.env.SMTP_HOST ?? "",
+    port: parseInt(process.env.SMTP_PORT ?? "587", 10),
+    user: process.env.SMTP_USER ?? "",
+    pass: process.env.SMTP_PASS ?? "",
+    from: process.env.SMTP_FROM ?? "noreply@localhost",
+    secure: process.env.SMTP_SECURE === "true",
+  },
+
   mediasoup: {
     listenIp: process.env.MEDIASOUP_LISTEN_IP ?? "0.0.0.0",
     announcedIp: process.env.MEDIASOUP_ANNOUNCED_IP ?? "127.0.0.1",

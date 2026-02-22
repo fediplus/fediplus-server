@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -10,34 +10,35 @@ import { apiFetch, ApiError } from "@/hooks/useApi";
 import { announce } from "@/a11y/announcer";
 import styles from "../login/page.module.css";
 
-export default function RegisterPage() {
+export default function ResetPasswordPage() {
+  const searchParams = useSearchParams();
   const router = useRouter();
+  const token = searchParams.get("token");
 
-  const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      announce("Passwords do not match", "assertive");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await apiFetch<{ message: string }>("/auth/register", {
+      await apiFetch<{ message: string }>("/auth/reset-password", {
         method: "POST",
-        body: JSON.stringify({
-          username,
-          email,
-          password,
-          displayName: displayName || undefined,
-        }),
+        body: JSON.stringify({ token, password }),
       });
-
-      announce("Account created — check your email");
-      router.push("/verify-email");
+      announce("Password reset successfully");
+      router.push("/login");
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : "Something went wrong";
@@ -48,10 +49,24 @@ export default function RegisterPage() {
     }
   }
 
+  if (!token) {
+    return (
+      <div className={styles.container}>
+        <Card className={styles.card} elevation={2}>
+          <h1 className={styles.title}>Invalid Link</h1>
+          <p className={styles.footer}>
+            This password reset link is invalid. Please{" "}
+            <Link href="/forgot-password">request a new one</Link>.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.container}>
       <Card className={styles.card} elevation={2}>
-        <h1 className={styles.title}>Join Fedi+</h1>
+        <h1 className={styles.title}>Set New Password</h1>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           {error && (
@@ -61,32 +76,7 @@ export default function RegisterPage() {
           )}
 
           <Input
-            label="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-            autoComplete="username"
-            pattern="[a-zA-Z0-9_]+"
-          />
-
-          <Input
-            label="Display Name"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            autoComplete="name"
-          />
-
-          <Input
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-          />
-
-          <Input
-            label="Password"
+            label="New Password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -95,13 +85,23 @@ export default function RegisterPage() {
             autoComplete="new-password"
           />
 
+          <Input
+            label="Confirm Password"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            minLength={8}
+            autoComplete="new-password"
+          />
+
           <Button type="submit" disabled={loading}>
-            {loading ? "Creating account..." : "Create account"}
+            {loading ? "Resetting..." : "Reset password"}
           </Button>
         </form>
 
         <p className={styles.footer}>
-          Already have an account? <Link href="/login">Sign in</Link>
+          <Link href="/login">Back to sign in</Link>
         </p>
       </Card>
     </div>

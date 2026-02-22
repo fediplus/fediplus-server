@@ -1,3 +1,4 @@
+import "./env.js";
 import { resolve } from "node:path";
 import Fastify from "fastify";
 import cors from "@fastify/cors";

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuthStore } from "@/stores/auth";
 import styles from "./Sidebar.module.css";
 
 const NAV_ITEMS = [
@@ -14,6 +15,7 @@ const NAV_ITEMS = [
   { href: "/events", label: "Events", icon: "event", enabled: true },
   { href: "/hangouts", label: "Hangouts", icon: "videocam", enabled: true },
   { href: "/messages", label: "Messages", icon: "chat", enabled: true },
+  { href: "/settings", label: "Settings", icon: "settings", enabled: true },
 ] as const;
 
 const ICON_MAP: Record<string, string> = {
@@ -26,10 +28,19 @@ const ICON_MAP: Record<string, string> = {
   event: "\u2637",
   videocam: "\u25B6",
   chat: "\u2709",
+  settings: "\u2699",
 };
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)();
+  const logout = useAuthStore((s) => s.logout);
+
+  function handleSignOut() {
+    logout();
+    router.push("/login");
+  }
 
   return (
     <nav className={styles.sidebar} aria-label="Main navigation">
@@ -80,6 +91,18 @@ export function Sidebar() {
           );
         })}
       </ul>
+
+      {isAuthenticated && (
+        <div className={styles.sidebarFooter}>
+          <button
+            type="button"
+            className={styles.signOutButton}
+            onClick={handleSignOut}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
     </nav>
   );
 }

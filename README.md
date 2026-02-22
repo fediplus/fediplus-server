@@ -369,6 +369,12 @@ For production, you would add the Fedi+ backend and frontend as services to the 
 | `S3_SECRET_KEY` | `fediplus-secret` | S3 secret key |
 | `S3_BUCKET` | `fediplus-media` | S3 bucket name |
 | `S3_REGION` | `us-east-1` | S3 region |
+| `SMTP_HOST` | *(empty)* | SMTP server hostname |
+| `SMTP_PORT` | `587` | SMTP server port |
+| `SMTP_USER` | *(empty)* | SMTP username |
+| `SMTP_PASS` | *(empty)* | SMTP password |
+| `SMTP_FROM` | `noreply@localhost` | Sender address for emails |
+| `SMTP_SECURE` | `false` | Use TLS (`true` for port 465) |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:3001` | API URL for the frontend |
 | `NEXT_PUBLIC_SITE_NAME` | `Fedi+` | Site name shown in the UI |
 

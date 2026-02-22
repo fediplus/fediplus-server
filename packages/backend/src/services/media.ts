@@ -79,7 +79,7 @@ async function storeFile(
   }
 }
 
-async function deleteFile(key: string): Promise<void> {
+export async function deleteFile(key: string): Promise<void> {
   if (config.storage.type === "local") {
     const filePath = resolve(config.storage.localPath, key);
     await unlink(filePath).catch(() => {});
@@ -99,7 +99,7 @@ function buildMediaUrl(key: string): string {
   return `${config.s3.endpoint}/${config.s3.bucket}/${key}`;
 }
 
-function extractKey(url: string): string {
+export function extractKey(url: string): string {
   if (config.storage.type === "local") {
     return url.replace(`${localBaseUrl}/media/`, "");
   }
