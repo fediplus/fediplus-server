@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
-import { apiFetch } from "@/hooks/useApi";
+import { apiFetch, ApiError } from "@/hooks/useApi";
 import { useAuthStore } from "@/stores/auth";
 import { announce } from "@/a11y/announcer";
 import styles from "./page.module.css";
@@ -72,8 +72,11 @@ export default function ProfileEditPage() {
       });
       setSuccess("Profile updated successfully");
       announce("Profile updated");
-    } catch {
-      setError("Failed to update profile");
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : String(err);
+      setError(message);
+      announce(message, "assertive");
     } finally {
       setSaving(false);
     }

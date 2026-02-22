@@ -13,9 +13,8 @@ export function useSSE(onEvent: SSEHandler) {
   useEffect(() => {
     if (!token) return;
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
     const eventSource = new EventSource(
-      `${apiUrl}/api/v1/sse?token=${encodeURIComponent(token)}`
+      `/api/v1/sse?token=${encodeURIComponent(token)}`
     );
 
     const events = [

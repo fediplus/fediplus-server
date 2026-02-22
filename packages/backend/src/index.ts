@@ -34,8 +34,10 @@ async function main() {
 
   // CORS
   await app.register(cors, {
-    origin: config.isProduction ? config.publicUrl : true,
+    origin: true,
     credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   });
 
   // Error handler

@@ -113,7 +113,7 @@ export function PostComposer() {
         }
 
         const result = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/api/v1/media`,
+          `/api/v1/media`,
           {
             method: "POST",
             headers: {

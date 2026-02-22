@@ -11,11 +11,10 @@ import type {
 import { useAuthStore } from "@/stores/auth";
 import { useHangoutStore } from "@/stores/hangouts";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:3001";
 
 function getWsUrl(hangoutId: string, token: string) {
-  const base = API_URL.replace(/^http/, "ws");
-  return `${base}/api/v1/hangouts/${hangoutId}/ws?token=${encodeURIComponent(token)}`;
+  return `${WS_URL}/api/v1/hangouts/${hangoutId}/ws?token=${encodeURIComponent(token)}`;
 }
 
 interface SignalingMessage {
