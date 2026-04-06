@@ -16,14 +16,7 @@ import {
   removeReaction,
   deletePost,
 } from "../../../services/posts.js";
-import {
-  sendCreateNote,
-  sendUpdateNote,
-  sendDeleteNote,
-  sendLike,
-  sendUndoLike,
-  sendAnnounce,
-} from "../../../federation/outbox.js";
+import { federationQueue } from "../../../jobs/queues.js";
 
 const streamQuerySchema = cursorPaginationSchema.extend({
   circleId: z.string().uuid().optional(),
@@ -90,11 +83,15 @@ export async function postRoutes(app: FastifyInstance) {
       const post = await createPost(request.user!.userId, input);
       // Send AP activity for public posts
       if (input.visibility === "public" || input.visibility === "followers") {
-        sendCreateNote(request.user!.userId, {
-          id: post.id,
-          content: post.content,
-          apId: post.apId,
-          createdAt: post.createdAt,
+        federationQueue.add("createNote", {
+          type: "createNote",
+          authorId: request.user!.userId,
+          post: {
+            id: post.id,
+            content: post.content,
+            apId: post.apId,
+            createdAt: post.createdAt.toISOString(),
+          },
         }).catch(() => {});
       }
       return reply.status(201).send(post);
@@ -112,11 +109,15 @@ export async function postRoutes(app: FastifyInstance) {
       if (!post) {
         return reply.status(404).send({ error: "Post not found" });
       }
-      sendUpdateNote(request.user!.userId, {
-        id: post.id,
-        content: post.content,
-        apId: post.apId,
-        updatedAt: post.updatedAt,
+      federationQueue.add("updateNote", {
+        type: "updateNote",
+        authorId: request.user!.userId,
+        post: {
+          id: post.id,
+          content: post.content,
+          apId: post.apId,
+          updatedAt: post.updatedAt.toISOString(),
+        },
       }).catch(() => {});
       return post;
     }
@@ -133,7 +134,11 @@ export async function postRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: "Post not found" });
       }
       if (deletedPost.apId) {
-        sendDeleteNote(request.user!.userId, deletedPost.apId).catch(() => {});
+        federationQueue.add("deleteNote", {
+          type: "deleteNote",
+          authorId: request.user!.userId,
+          postApId: deletedPost.apId,
+        }).catch(() => {});
       }
       return { ok: true };
     }
@@ -149,7 +154,11 @@ export async function postRoutes(app: FastifyInstance) {
       if (!reaction) {
         return reply.status(404).send({ error: "Post not found" });
       }
-      sendLike(request.user!.userId, id).catch(() => {});
+      federationQueue.add("like", {
+        type: "like",
+        userId: request.user!.userId,
+        postId: id,
+      }).catch(() => {});
       return reply.status(201).send(reaction);
     }
   );
@@ -160,7 +169,11 @@ export async function postRoutes(app: FastifyInstance) {
     async (request) => {
       const { id } = request.params as { id: string };
       await removeReaction(id, request.user!.userId);
-      sendUndoLike(request.user!.userId, id).catch(() => {});
+      federationQueue.add("undoLike", {
+        type: "undoLike",
+        userId: request.user!.userId,
+        postId: id,
+      }).catch(() => {});
       return { ok: true };
     }
   );
@@ -175,7 +188,12 @@ export async function postRoutes(app: FastifyInstance) {
       if (!reshare) {
         return reply.status(404).send({ error: "Post not found" });
       }
-      sendAnnounce(request.user!.userId, id, reshare.id).catch(() => {});
+      federationQueue.add("announce", {
+        type: "announce",
+        userId: request.user!.userId,
+        originalPostId: id,
+        reshareId: reshare.id,
+      }).catch(() => {});
       return reply.status(201).send(reshare);
     }
   );

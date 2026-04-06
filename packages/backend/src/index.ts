@@ -24,6 +24,7 @@ import { messageRoutes } from "./routes/api/v1/messages.js";
 import { hangoutRoutes } from "./routes/api/v1/hangouts.js";
 import { hangoutSignalingRoutes } from "./routes/api/v1/hangout-signaling.js";
 import { initializeWorkers } from "./mediasoup/workers.js";
+import { startWorkers } from "./jobs/workers.js";
 
 async function main() {
   const app = Fastify({
@@ -84,6 +85,9 @@ async function main() {
 
   // Initialize mediasoup workers
   await initializeWorkers();
+
+  // Start background job workers (federation delivery, email)
+  startWorkers();
 
   // Start
   await app.listen({ host: config.host, port: config.port });
