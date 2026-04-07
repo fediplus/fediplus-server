@@ -1,5 +1,7 @@
-import { sql } from "drizzle-orm";
+import { sql, or, eq } from "drizzle-orm";
 import { db } from "../db/connection.js";
+import { blocks } from "../db/schema/follows.js";
+import { cached, CacheKeys, CacheTTL } from "./cache.js";
 
 // ── Sanitization ───────────────────────────────────────────────
 // Strip tsquery special characters and build a safe query string.
@@ -77,6 +79,22 @@ export interface HashtagSearchHit {
 
 // ── Unified search ─────────────────────────────────────────────
 
+async function getBlockedIds(userId?: string): Promise<string[]> {
+  if (!userId) return [];
+  return cached(CacheKeys.blockedIds(userId), CacheTTL.blockedIds, async () => {
+    const rows = await db
+      .select({ blockerId: blocks.blockerId, blockedId: blocks.blockedId })
+      .from(blocks)
+      .where(or(eq(blocks.blockerId, userId), eq(blocks.blockedId, userId)));
+    const ids = new Set<string>();
+    for (const r of rows) {
+      if (r.blockerId !== userId) ids.add(r.blockerId);
+      if (r.blockedId !== userId) ids.add(r.blockedId);
+    }
+    return [...ids];
+  });
+}
+
 export async function search(
   query: string,
   options: {
@@ -86,8 +104,9 @@ export async function search(
     currentUserId?: string;
   } = {}
 ): Promise<SearchResults> {
-  const { type = "all", limit = 20, offset = 0 } = options;
+  const { type = "all", limit = 20, offset = 0, currentUserId } = options;
   const safeLimit = Math.min(Math.max(limit, 1), 100);
+  const blockedIds = await getBlockedIds(currentUserId);
 
   const results: SearchResults = {
     posts: [],
@@ -100,7 +119,7 @@ export async function search(
 
   if (type === "all" || type === "posts") {
     searches.push(
-      searchPosts(query, safeLimit, offset).then((r) => {
+      searchPosts(query, safeLimit, offset, blockedIds).then((r) => {
         results.posts = r;
       })
     );
@@ -108,7 +127,7 @@ export async function search(
 
   if (type === "all" || type === "users") {
     searches.push(
-      searchUsers(query, safeLimit, offset).then((r) => {
+      searchUsers(query, safeLimit, offset, blockedIds).then((r) => {
         results.users = r;
       })
     );
@@ -140,10 +159,16 @@ export async function search(
 async function searchPosts(
   query: string,
   limit: number,
-  offset: number
+  offset: number,
+  blockedIds: string[]
 ): Promise<PostSearchHit[]> {
   const tsq = toTsquery(query);
   if (!tsq) return [];
+
+  const blockClause =
+    blockedIds.length > 0
+      ? sql`AND p.author_id NOT IN (${sql.join(blockedIds.map((id) => sql`${id}`), sql`, `)})`
+      : sql``;
 
   return execSql<PostSearchHit>(sql`
     SELECT
@@ -163,6 +188,7 @@ async function searchPosts(
       AND p.visibility = 'public'
       AND p.reply_to_id IS NULL
       AND p.reshare_of_id IS NULL
+      ${blockClause}
     ORDER BY rank DESC, p.created_at DESC
     LIMIT ${limit}
     OFFSET ${offset}
@@ -175,10 +201,16 @@ async function searchPosts(
 async function searchUsers(
   query: string,
   limit: number,
-  offset: number
+  offset: number,
+  blockedIds: string[]
 ): Promise<UserSearchHit[]> {
   const clean = sanitizeQuery(query);
   if (!clean) return [];
+
+  const blockClause =
+    blockedIds.length > 0
+      ? sql`AND u.id NOT IN (${sql.join(blockedIds.map((id) => sql`${id}`), sql`, `)})`
+      : sql``;
 
   return execSql<UserSearchHit>(sql`
     SELECT
@@ -198,6 +230,7 @@ async function searchUsers(
       u.username     % ${clean}
       OR pr.display_name % ${clean}
     )
+      ${blockClause}
     ORDER BY similarity DESC, u.created_at ASC
     LIMIT ${limit}
     OFFSET ${offset}

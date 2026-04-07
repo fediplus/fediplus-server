@@ -60,6 +60,17 @@ vi.mock("../../services/media.js", () => ({
   getMediaByPost: vi.fn(async () => []),
 }));
 
+vi.mock("../../services/cache.js", () => ({
+  cached: vi.fn((_key: string, _ttl: number, fn: () => Promise<unknown>) => fn()),
+  invalidate: vi.fn(async () => {}),
+  CacheKeys: {
+    postCounts: (id: string) => `post:counts:${id}`,
+    followerIds: (id: string) => `user:followers:${id}`,
+    blockedIds: (id: string) => `user:blocked:${id}`,
+  },
+  CacheTTL: { postCounts: 60, followerIds: 120, blockedIds: 120 },
+}));
+
 // ── Import AFTER mocks ────────────────────────────────────────
 
 const {

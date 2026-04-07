@@ -1,4 +1,4 @@
-import { eq, and, desc, lt, sql, isNull } from "drizzle-orm";
+import { eq, and, desc, lt, sql, isNull, or } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import {
   conversations,
@@ -9,12 +9,28 @@ import {
 } from "../db/schema/messages.js";
 import { users, profiles } from "../db/schema/users.js";
 import { notifications } from "../db/schema/notifications.js";
+import { blocks } from "../db/schema/follows.js";
 import { sendEvent } from "../realtime/sse.js";
 
 export async function createConversation(
   userId: string,
   participantIds: string[]
 ) {
+  // Block check: can't start conversations with blocked users
+  const blockRows = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(
+      and(
+        or(
+          and(eq(blocks.blockerId, userId), sql`${blocks.blockedId} = ANY(${participantIds})`),
+          and(eq(blocks.blockedId, userId), sql`${blocks.blockerId} = ANY(${participantIds})`)
+        )
+      )
+    )
+    .limit(1);
+  if (blockRows.length > 0) return null;
+
   // For 1:1, check if conversation already exists
   if (participantIds.length === 1) {
     const otherId = participantIds[0];

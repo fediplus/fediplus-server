@@ -4,6 +4,7 @@ import { follows, blocks } from "../db/schema/follows.js";
 import { users, profiles } from "../db/schema/users.js";
 import { notifications } from "../db/schema/notifications.js";
 import { sendEvent } from "../realtime/sse.js";
+import { invalidate, CacheKeys } from "./cache.js";
 
 export async function followUser(followerId: string, followingId: string) {
   if (followerId === followingId) {
@@ -53,6 +54,9 @@ export async function followUser(followerId: string, followingId: string) {
     actorId: followerId,
   });
 
+  // Invalidate follower caches
+  await invalidate(CacheKeys.followerIds(followingId));
+
   return follow;
 }
 
@@ -65,6 +69,7 @@ export async function unfollowUser(followerId: string, followingId: string) {
         eq(follows.followingId, followingId)
       )
     );
+  await invalidate(CacheKeys.followerIds(followingId));
 }
 
 export async function getFollowers(userId: string) {
@@ -130,6 +135,14 @@ export async function blockUser(blockerId: string, blockedId: string) {
     .values({ blockerId, blockedId })
     .returning();
 
+  // Invalidate caches
+  await Promise.all([
+    invalidate(CacheKeys.blockedIds(blockerId)),
+    invalidate(CacheKeys.blockedIds(blockedId)),
+    invalidate(CacheKeys.followerIds(blockerId)),
+    invalidate(CacheKeys.followerIds(blockedId)),
+  ]);
+
   return block;
 }
 
@@ -139,6 +152,10 @@ export async function unblockUser(blockerId: string, blockedId: string) {
     .where(
       and(eq(blocks.blockerId, blockerId), eq(blocks.blockedId, blockedId))
     );
+  await Promise.all([
+    invalidate(CacheKeys.blockedIds(blockerId)),
+    invalidate(CacheKeys.blockedIds(blockedId)),
+  ]);
 }
 
 export async function getBlocked(userId: string) {

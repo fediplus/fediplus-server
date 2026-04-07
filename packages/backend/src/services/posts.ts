@@ -1,24 +1,44 @@
-import { eq, desc, sql, and, lt, or, inArray } from "drizzle-orm";
+import { eq, desc, sql, and, lt, or, inArray, notInArray } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import { posts, postAudiences, reactions } from "../db/schema/posts.js";
 import { users, profiles } from "../db/schema/users.js";
-import { follows } from "../db/schema/follows.js";
+import { follows, blocks } from "../db/schema/follows.js";
 import { circles, circleMembers } from "../db/schema/circles.js";
 import { notifications } from "../db/schema/notifications.js";
 import { config } from "../config.js";
 import { resolveCircleMembers } from "./circles.js";
 import { attachMediaToPost, getMediaByPost } from "./media.js";
 import { sendEvent, broadcastToUsers } from "../realtime/sse.js";
+import { cached, invalidate, CacheKeys, CacheTTL } from "./cache.js";
 import type { CreatePostInput } from "@fediplus/shared";
 
 // ── Follower broadcast helper ──
 
 async function getFollowerIds(userId: string): Promise<string[]> {
-  const rows = await db
-    .select({ id: follows.followerId })
-    .from(follows)
-    .where(and(eq(follows.followingId, userId), eq(follows.status, "accepted")));
-  return rows.map((r) => r.id);
+  return cached(CacheKeys.followerIds(userId), CacheTTL.followerIds, async () => {
+    const rows = await db
+      .select({ id: follows.followerId })
+      .from(follows)
+      .where(and(eq(follows.followingId, userId), eq(follows.status, "accepted")));
+    return rows.map((r) => r.id);
+  });
+}
+
+// ── Block list (bidirectional) ──
+
+async function getBlockedIds(userId: string): Promise<string[]> {
+  return cached(CacheKeys.blockedIds(userId), CacheTTL.blockedIds, async () => {
+    const rows = await db
+      .select({ blockerId: blocks.blockerId, blockedId: blocks.blockedId })
+      .from(blocks)
+      .where(or(eq(blocks.blockerId, userId), eq(blocks.blockedId, userId)));
+    const ids = new Set<string>();
+    for (const r of rows) {
+      if (r.blockerId !== userId) ids.add(r.blockerId);
+      if (r.blockedId !== userId) ids.add(r.blockedId);
+    }
+    return [...ids];
+  });
 }
 
 // ── Helpers ──
@@ -49,26 +69,28 @@ function buildAuthor(row: {
 }
 
 async function getPostCounts(postId: string) {
-  const [reactionCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(reactions)
-    .where(eq(reactions.postId, postId));
+  return cached(CacheKeys.postCounts(postId), CacheTTL.postCounts, async () => {
+    const [reactionCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(reactions)
+      .where(eq(reactions.postId, postId));
 
-  const [commentCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(posts)
-    .where(and(eq(posts.replyToId, postId), sql`${posts.reshareOfId} IS NULL`));
+    const [commentCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(posts)
+      .where(and(eq(posts.replyToId, postId), sql`${posts.reshareOfId} IS NULL`));
 
-  const [reshareCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(posts)
-    .where(eq(posts.reshareOfId, postId));
+    const [reshareCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(posts)
+      .where(eq(posts.reshareOfId, postId));
 
-  return {
-    reactionCount: reactionCount.count,
-    commentCount: commentCount.count,
-    reshareCount: reshareCount.count,
-  };
+    return {
+      reactionCount: reactionCount.count,
+      commentCount: commentCount.count,
+      reshareCount: reshareCount.count,
+    };
+  });
 }
 
 async function hasUserReacted(postId: string, userId: string) {
@@ -182,6 +204,8 @@ export async function createPost(authorId: string, input: CreatePostInput) {
 
   // Notify parent post author on comment
   if (input.replyToId) {
+    // Invalidate parent's comment count cache
+    await invalidate(CacheKeys.postCounts(input.replyToId));
     const parent = await db.query.posts.findFirst({
       where: eq(posts.id, input.replyToId),
     });
@@ -218,6 +242,10 @@ export async function resharePost(userId: string, postId: string) {
   });
   if (!original) return null;
 
+  // Block check: can't reshare posts by blocked users
+  const blockedIds = await getBlockedIds(userId);
+  if (blockedIds.includes(original.authorId)) return null;
+
   // Prevent duplicate reshares
   const existing = await db.query.posts.findFirst({
     where: and(eq(posts.authorId, userId), eq(posts.reshareOfId, postId)),
@@ -238,6 +266,9 @@ export async function resharePost(userId: string, postId: string) {
 
   const apId = `${config.publicUrl}/posts/${reshare.id}`;
   await db.update(posts).set({ apId }).where(eq(posts.id, reshare.id));
+
+  // Invalidate post counts cache (reshare count changed)
+  await invalidate(CacheKeys.postCounts(postId));
 
   // Notify original author
   if (original.authorId !== userId) {
@@ -270,6 +301,7 @@ export async function unresharePost(userId: string, postId: string) {
   await db
     .delete(posts)
     .where(and(eq(posts.authorId, userId), eq(posts.reshareOfId, postId)));
+  await invalidate(CacheKeys.postCounts(postId));
 }
 
 // ── Edit ──
@@ -331,6 +363,13 @@ export async function getPost(postId: string, currentUserId?: string) {
   if (result.length === 0) return null;
 
   const row = result[0];
+
+  // Block check: hide posts by/from blocked users
+  if (currentUserId) {
+    const blockedIds = await getBlockedIds(currentUserId);
+    if (blockedIds.includes(row.post.authorId)) return null;
+  }
+
   const counts = await getPostCounts(postId);
   const userReacted = currentUserId
     ? await hasUserReacted(postId, currentUserId)
@@ -365,8 +404,12 @@ export async function getStream(
 
   const authorIds = [userId, ...followedIds.map((f) => f.id)];
 
+  // Filter out blocked users (bidirectional)
+  const blockedIds = await getBlockedIds(userId);
+  const safeAuthorIds = authorIds.filter((id) => !blockedIds.includes(id));
+
   const conditions = [
-    inArray(posts.authorId, authorIds),
+    inArray(posts.authorId, safeAuthorIds),
     or(
       eq(posts.visibility, "public"),
       eq(posts.visibility, "followers"),
@@ -410,7 +453,8 @@ async function getCircleStream(
     .innerJoin(circles, eq(circleMembers.circleId, circles.id))
     .where(and(eq(circleMembers.circleId, circleId), eq(circles.userId, userId)));
 
-  const memberIds = members.map((m) => m.memberId);
+  const blockedIds = await getBlockedIds(userId);
+  const memberIds = members.map((m) => m.memberId).filter((id) => !blockedIds.includes(id));
   if (memberIds.length === 0) {
     return { items: [], cursor: null };
   }
@@ -452,11 +496,17 @@ export async function getHashtagStream(
   limit = 20
 ) {
   const tag = hashtag.toLowerCase();
+  const blockedIds = await getBlockedIds(currentUserId);
+
   const conditions = [
     eq(posts.visibility, "public"),
     sql`${posts.hashtags}::text LIKE ${"%" + JSON.stringify(tag).slice(1, -1) + "%"}`,
     sql`${posts.replyToId} IS NULL`,
   ];
+
+  if (blockedIds.length > 0) {
+    conditions.push(notInArray(posts.authorId, blockedIds));
+  }
 
   if (cursor) {
     conditions.push(lt(posts.createdAt, new Date(cursor)));
@@ -488,10 +538,16 @@ export async function getComments(
   cursor?: string,
   limit = 50
 ) {
+  const blockedIds = await getBlockedIds(currentUserId);
+
   const conditions = [
     eq(posts.replyToId, postId),
     sql`${posts.reshareOfId} IS NULL`,
   ];
+
+  if (blockedIds.length > 0) {
+    conditions.push(notInArray(posts.authorId, blockedIds));
+  }
 
   if (cursor) {
     conditions.push(lt(posts.createdAt, new Date(cursor)));
@@ -534,11 +590,18 @@ export async function getUserPosts(
   cursor?: string,
   limit = 20
 ) {
+  // Check if the current user has blocked (or is blocked by) the author
+  const blockedIds = await getBlockedIds(currentUserId);
+
   const conditions = [
     eq(users.username, authorUsername),
     sql`${posts.replyToId} IS NULL`,
     sql`${posts.reshareOfId} IS NULL`,
   ];
+
+  if (blockedIds.length > 0) {
+    conditions.push(notInArray(posts.authorId, blockedIds));
+  }
 
   if (cursor) {
     conditions.push(lt(posts.createdAt, new Date(cursor)));
@@ -568,6 +631,10 @@ export async function addReaction(postId: string, userId: string) {
   const post = await db.query.posts.findFirst({ where: eq(posts.id, postId) });
   if (!post) return null;
 
+  // Block check: can't react to posts by blocked users
+  const blockedIds = await getBlockedIds(userId);
+  if (blockedIds.includes(post.authorId)) return null;
+
   const existing = await db.query.reactions.findFirst({
     where: and(eq(reactions.postId, postId), eq(reactions.userId, userId)),
   });
@@ -577,6 +644,9 @@ export async function addReaction(postId: string, userId: string) {
     .insert(reactions)
     .values({ postId, userId, type: "+1" })
     .returning();
+
+  // Invalidate post counts cache
+  await invalidate(CacheKeys.postCounts(postId));
 
   // Notify post author
   if (post.authorId !== userId) {
@@ -601,6 +671,7 @@ export async function removeReaction(postId: string, userId: string) {
   await db
     .delete(reactions)
     .where(and(eq(reactions.postId, postId), eq(reactions.userId, userId)));
+  await invalidate(CacheKeys.postCounts(postId));
 }
 
 // ── Delete ──
@@ -615,6 +686,11 @@ export async function deletePost(postId: string, authorId: string) {
   const followerIds = await getFollowerIds(authorId);
 
   await db.delete(posts).where(eq(posts.id, postId));
+
+  // Invalidate caches
+  await invalidate(CacheKeys.postCounts(postId));
+  if (post.replyToId) await invalidate(CacheKeys.postCounts(post.replyToId));
+  if (post.reshareOfId) await invalidate(CacheKeys.postCounts(post.reshareOfId));
 
   // SSE: notify followers of deletion
   broadcastToUsers(followerIds, "post_deleted", { postId });
