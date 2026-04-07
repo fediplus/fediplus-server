@@ -4,12 +4,16 @@ import jwt from "jsonwebtoken";
 import { config } from "../../../config.js";
 import type { AuthPayload } from "../../../middleware/auth.js";
 import {
+  createRoom,
   getRoom,
   getOrCreateParticipant,
   removeParticipant,
   type Room,
   type Participant,
 } from "../../../mediasoup/rooms.js";
+import { eq } from "drizzle-orm";
+import { db } from "../../../db/connection.js";
+import { hangouts } from "../../../db/schema/hangouts.js";
 import {
   createWebRtcTransport,
   connectTransport,
@@ -51,55 +55,88 @@ export async function hangoutSignalingRoutes(app: FastifyInstance) {
         return;
       }
 
-      const room = getRoom(hangoutId);
+      // Get or recreate the mediasoup room (handles server restarts)
+      let room = getRoom(hangoutId);
       if (!room) {
-        socket.send(JSON.stringify({ type: "error", data: { message: "Room not found" } }));
-        socket.close();
+        // Verify the hangout exists in DB and isn't ended before creating a room
+        const hangout = db.query.hangouts.findFirst({
+          where: eq(hangouts.id, hangoutId),
+        });
+        hangout.then(async (h) => {
+          if (!h || h.status === "ended") {
+            socket.send(JSON.stringify({ type: "error", data: { message: "Room not found" } }));
+            socket.close();
+            return;
+          }
+          room = await createRoom(hangoutId);
+          setupSocket(room, user, hangoutId, socket);
+        }).catch(() => {
+          socket.send(JSON.stringify({ type: "error", data: { message: "Room not found" } }));
+          socket.close();
+        });
         return;
       }
 
-      const participant = getOrCreateParticipant(room, user.userId);
-
-      // Track all sockets in the room for broadcasting
-      const socketMap = getSocketMap(hangoutId);
-      socketMap.set(user.userId, socket);
-
-      socket.on("message", async (raw: Buffer | string) => {
-        try {
-          const message: SignalingMessage = JSON.parse(
-            typeof raw === "string" ? raw : raw.toString()
-          );
-          const response = await handleMessage(
-            room,
-            participant,
-            user,
-            hangoutId,
-            message,
-            socketMap
-          );
-          if (response) {
-            socket.send(JSON.stringify({ ...response, id: message.id }));
-          }
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : "Unknown error";
-          socket.send(
-            JSON.stringify({ type: "error", data: { message: errMsg } })
-          );
-        }
-      });
-
-      socket.on("close", () => {
-        socketMap.delete(user.userId);
-        removeParticipant(room, user.userId);
-
-        // Notify other participants
-        broadcast(socketMap, user.userId, {
-          type: "participantLeft",
-          data: { userId: user.userId, username: user.username },
-        });
-      });
+      setupSocket(room, user, hangoutId, socket);
     }
   );
+}
+
+function setupSocket(
+  room: Room,
+  user: AuthPayload,
+  hangoutId: string,
+  socket: WebSocket
+) {
+  const participant = getOrCreateParticipant(room, user.userId);
+  const socketMap = getSocketMap(hangoutId);
+  socketMap.set(user.userId, socket);
+
+  // Notify existing participants about the new joiner
+  broadcast(socketMap, user.userId, {
+    type: "participantJoined",
+    data: { userId: user.userId, username: user.username },
+  });
+
+  socket.on("message", async (raw: Buffer | string) => {
+    try {
+      const message: SignalingMessage = JSON.parse(
+        typeof raw === "string" ? raw : raw.toString()
+      );
+      const response = await handleMessage(
+        room,
+        participant,
+        user,
+        hangoutId,
+        message,
+        socketMap
+      );
+      if (response) {
+        socket.send(JSON.stringify({ ...response, id: message.id }));
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown error";
+      socket.send(
+        JSON.stringify({ type: "error", data: { message: errMsg } })
+      );
+    }
+  });
+
+  socket.on("close", () => {
+    socketMap.delete(user.userId);
+    removeParticipant(room, user.userId);
+
+    // Notify other participants
+    broadcast(socketMap, user.userId, {
+      type: "participantLeft",
+      data: { userId: user.userId, username: user.username },
+    });
+
+    // Clean up room socket tracking when room empties
+    if (socketMap.size === 0) {
+      roomSockets.delete(hangoutId);
+    }
+  });
 }
 
 // Track WebSocket connections per room
@@ -284,6 +321,50 @@ async function handleMessage(
       }
       await consumer.resume();
       return { type: "consumerResumed", data: { consumerId } };
+    }
+
+    case "pauseProducer": {
+      const { producerId } = message.data as { producerId: string };
+      const producer = participant.producers.get(producerId);
+      if (!producer) {
+        return { type: "error", data: { message: "Producer not found" } };
+      }
+      await producer.pause();
+
+      // Notify other participants so they can pause the corresponding consumer
+      broadcast(socketMap, user.userId, {
+        type: "producerPaused",
+        data: { producerId, userId: user.userId },
+      });
+
+      return { type: "producerPaused", data: { producerId } };
+    }
+
+    case "resumeProducer": {
+      const { producerId } = message.data as { producerId: string };
+      const producer = participant.producers.get(producerId);
+      if (!producer) {
+        return { type: "error", data: { message: "Producer not found" } };
+      }
+      await producer.resume();
+
+      broadcast(socketMap, user.userId, {
+        type: "producerResumed",
+        data: { producerId, userId: user.userId },
+      });
+
+      return { type: "producerResumed", data: { producerId } };
+    }
+
+    case "closeProducer": {
+      const { producerId } = message.data as { producerId: string };
+      const producer = participant.producers.get(producerId);
+      if (!producer) {
+        return { type: "error", data: { message: "Producer not found" } };
+      }
+      producer.close();
+      participant.producers.delete(producerId);
+      return { type: "producerClosed", data: { producerId } };
     }
 
     case "getParticipants": {

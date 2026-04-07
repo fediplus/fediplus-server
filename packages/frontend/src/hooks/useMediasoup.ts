@@ -12,6 +12,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useHangoutStore } from "@/stores/hangouts";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:3001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 function getWsUrl(hangoutId: string, token: string) {
   return `${WS_URL}/api/v1/hangouts/${hangoutId}/ws?token=${encodeURIComponent(token)}`;
@@ -273,6 +274,35 @@ export function useMediasoup(hangoutId: string | null) {
           break;
         }
 
+        case "producerPaused": {
+          const { producerId: pausedId } = message.data as { producerId: string };
+          // Find and pause the consumer that corresponds to this producer
+          for (const consumer of consumersRef.current.values()) {
+            if (consumer.producerId === pausedId) {
+              consumer.pause();
+              break;
+            }
+          }
+          break;
+        }
+
+        case "producerResumed": {
+          const { producerId: resumedId } = message.data as { producerId: string };
+          for (const consumer of consumersRef.current.values()) {
+            if (consumer.producerId === resumedId) {
+              consumer.resume();
+              break;
+            }
+          }
+          break;
+        }
+
+        case "participantJoined": {
+          // New participant connected — they will produce tracks shortly
+          // which will trigger newProducer events
+          break;
+        }
+
         case "participantLeft": {
           const { userId: leftUserId } = message.data as { userId: string };
           removeRemoteStream(leftUserId);
@@ -335,23 +365,24 @@ export function useMediasoup(hangoutId: string | null) {
 
     if (audioProducer.paused) {
       audioProducer.resume();
+      await sendRequest("resumeProducer", { producerId: audioProducer.id });
       setMuted(false);
     } else {
       audioProducer.pause();
+      await sendRequest("pauseProducer", { producerId: audioProducer.id });
       setMuted(true);
     }
 
-    // Update server state
-    const apiUrl = API_URL;
-    await fetch(`${apiUrl}/api/v1/hangouts/${hangoutId}/media`, {
+    // Update server media state for DB/SSE
+    await fetch(`${API_URL}/api/v1/hangouts/${hangoutId}/media`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ isMuted: !audioProducer.paused }),
+      body: JSON.stringify({ isMuted: audioProducer.paused }),
     });
-  }, [hangoutId, token, setMuted]);
+  }, [hangoutId, token, setMuted, sendRequest]);
 
   const toggleCamera = useCallback(async () => {
     const videoProducer = producersRef.current.get("video");
@@ -359,9 +390,11 @@ export function useMediasoup(hangoutId: string | null) {
 
     if (videoProducer.paused) {
       videoProducer.resume();
+      await sendRequest("resumeProducer", { producerId: videoProducer.id });
       setCameraOff(false);
     } else {
       videoProducer.pause();
+      await sendRequest("pauseProducer", { producerId: videoProducer.id });
       setCameraOff(true);
     }
 
@@ -371,9 +404,9 @@ export function useMediasoup(hangoutId: string | null) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ isCameraOff: !videoProducer.paused }),
+      body: JSON.stringify({ isCameraOff: videoProducer.paused }),
     });
-  }, [hangoutId, token, setCameraOff]);
+  }, [hangoutId, token, setCameraOff, sendRequest]);
 
   const shareScreen = useCallback(async () => {
     if (!sendTransportRef.current) return;
