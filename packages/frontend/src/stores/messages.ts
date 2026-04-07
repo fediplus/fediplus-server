@@ -37,8 +37,10 @@ export interface EncryptedMessage {
   conversationId: string;
   senderId: string;
   ciphertext: string;
-  ephemeralPublicKey: string;
+  ephemeralPublicKey: string | null;
   iv: string;
+  epoch?: number;
+  mlsCounter?: number | null;
   createdAt: string;
 }
 

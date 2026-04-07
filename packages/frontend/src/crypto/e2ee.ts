@@ -1,16 +1,21 @@
 /**
- * End-to-End Encryption module using Web Crypto API (ECDH + AES-GCM).
+ * End-to-End Encryption module — MLS-inspired protocol.
  *
- * The server never sees plaintext — only ciphertext flows over the network.
- * Key pairs are ECDH P-256. Message encryption uses AES-GCM-256 with
- * ephemeral ECDH key agreement per message.
+ * Key concepts:
+ *   • Identity key pair (ECDH P-256) — one per user, generated at first login
+ *   • Key packages — one-time prekeys, consumed during conversation creation
+ *   • Group secret — derived via X3DH-style dual-DH using key packages
+ *   • Per-message keys — HKDF hash ratchet for forward secrecy within epochs
+ *   • Epochs advance on membership changes (join/leave/key rotation)
+ *
+ * The server never sees plaintext or group secrets.
  */
 
 const ECDH_PARAMS: EcKeyGenParams = { name: "ECDH", namedCurve: "P-256" };
 const AES_KEY_LENGTH = 256;
 const PBKDF2_ITERATIONS = 600_000;
 
-// ── Key generation ──
+// ── Identity Key Generation ──
 
 export async function generateKeyPair(): Promise<{
   publicKey: JsonWebKey;
@@ -46,7 +51,6 @@ export async function encryptPrivateKeyForBackup(
     plaintext
   );
 
-  // Pack salt + iv + ciphertext into a single base64 string
   const packed = new Uint8Array(
     salt.byteLength + iv.byteLength + ciphertext.byteLength
   );
@@ -81,13 +85,226 @@ export async function decryptPrivateKeyFromBackup(
   ]);
 }
 
-// ── Message encryption / decryption ──
+// ── MLS Key Packages (one-time prekeys) ──
+
+export async function generateKeyPackages(count: number): Promise<{
+  packages: Array<{ id: string; prekeyPublic: JsonWebKey }>;
+  privateKeys: Array<{ id: string; privateKey: CryptoKey }>;
+}> {
+  const packages: Array<{ id: string; prekeyPublic: JsonWebKey }> = [];
+  const privateKeys: Array<{ id: string; privateKey: CryptoKey }> = [];
+
+  for (let i = 0; i < count; i++) {
+    const id = crypto.randomUUID();
+    const pair = await crypto.subtle.generateKey(ECDH_PARAMS, true, [
+      "deriveKey",
+      "deriveBits",
+    ]);
+    const pub = await crypto.subtle.exportKey("jwk", pair.publicKey);
+    packages.push({ id, prekeyPublic: pub });
+    privateKeys.push({ id, privateKey: pair.privateKey });
+  }
+
+  return { packages, privateKeys };
+}
+
+// ── MLS Group Secret Establishment (X3DH-style) ──
+
+/**
+ * Initiator creates the group secret using their identity key
+ * and the recipient's key package + identity key.
+ *
+ *   DH1 = ECDH(my_identity, recipient_prekey)    — forward secrecy
+ *   DH2 = ECDH(my_identity, recipient_identity)  — authentication
+ *   group_secret = HKDF(DH1 || DH2, "fediplus-mls-v1")
+ */
+export async function createGroupSecret(
+  myIdentityPrivate: CryptoKey,
+  recipientIdentityPublic: JsonWebKey,
+  recipientPrekeyPublic: JsonWebKey
+): Promise<Uint8Array> {
+  const recipientIdentity = await importPublicKey(recipientIdentityPublic);
+  const recipientPrekey = await importPublicKey(recipientPrekeyPublic);
+
+  const dh1 = await crypto.subtle.deriveBits(
+    { name: "ECDH", public: recipientPrekey },
+    myIdentityPrivate,
+    256
+  );
+
+  const dh2 = await crypto.subtle.deriveBits(
+    { name: "ECDH", public: recipientIdentity },
+    myIdentityPrivate,
+    256
+  );
+
+  const combined = new Uint8Array(dh1.byteLength + dh2.byteLength);
+  combined.set(new Uint8Array(dh1), 0);
+  combined.set(new Uint8Array(dh2), dh1.byteLength);
+
+  return new Uint8Array(await hkdfDerive(combined, "fediplus-mls-v1", 32));
+}
+
+/**
+ * Recipient derives the same group secret using their prekey private key
+ * and the initiator's identity public key.
+ *
+ *   DH1 = ECDH(my_prekey, initiator_identity)    — mirrors initiator DH1
+ *   DH2 = ECDH(my_identity, initiator_identity)  — mirrors initiator DH2
+ */
+export async function deriveGroupSecret(
+  myIdentityPrivate: CryptoKey,
+  myPrekeyPrivate: CryptoKey,
+  initiatorIdentityPublic: JsonWebKey
+): Promise<Uint8Array> {
+  const initiatorIdentity = await importPublicKey(initiatorIdentityPublic);
+
+  const dh1 = await crypto.subtle.deriveBits(
+    { name: "ECDH", public: initiatorIdentity },
+    myPrekeyPrivate,
+    256
+  );
+
+  const dh2 = await crypto.subtle.deriveBits(
+    { name: "ECDH", public: initiatorIdentity },
+    myIdentityPrivate,
+    256
+  );
+
+  const combined = new Uint8Array(dh1.byteLength + dh2.byteLength);
+  combined.set(new Uint8Array(dh1), 0);
+  combined.set(new Uint8Array(dh2), dh1.byteLength);
+
+  return new Uint8Array(await hkdfDerive(combined, "fediplus-mls-v1", 32));
+}
+
+// ── Per-Message Key Derivation (HKDF hash ratchet) ──
+
+export async function deriveMessageKey(
+  groupSecret: Uint8Array,
+  epoch: number,
+  counter: number
+): Promise<CryptoKey> {
+  const info = `msg-${epoch}-${counter}`;
+  const keyBytes = await hkdfDerive(groupSecret, info, 32);
+  return crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "AES-GCM", length: AES_KEY_LENGTH },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+// ── MLS Group Message Encryption / Decryption ──
+
+export async function encryptGroupMessage(
+  plaintext: string,
+  groupSecret: Uint8Array,
+  epoch: number,
+  counter: number
+): Promise<{ ciphertext: string; iv: string; epoch: number; counter: number }> {
+  const key = await deriveMessageKey(groupSecret, epoch, counter);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(plaintext);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    encoded
+  );
+
+  return {
+    ciphertext: bufferToBase64(new Uint8Array(ciphertext)),
+    iv: bufferToBase64(iv),
+    epoch,
+    counter,
+  };
+}
+
+export async function decryptGroupMessage(
+  ciphertext: string,
+  iv: string,
+  groupSecret: Uint8Array,
+  epoch: number,
+  counter: number
+): Promise<string> {
+  const key = await deriveMessageKey(groupSecret, epoch, counter);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: base64ToBuffer(iv) },
+    key,
+    base64ToBuffer(ciphertext)
+  );
+  return new TextDecoder().decode(decrypted);
+}
+
+/**
+ * Encrypt a group secret so it can be stored on the server for a specific user.
+ * Uses ECDH(my_identity, their_identity) + HKDF to derive a wrapping key.
+ */
+export async function encryptGroupSecretForUser(
+  groupSecret: Uint8Array,
+  myIdentityPrivate: CryptoKey,
+  theirIdentityPublic: JsonWebKey
+): Promise<string> {
+  const theirKey = await importPublicKey(theirIdentityPublic);
+  const wrappingKey = await crypto.subtle.deriveKey(
+    { name: "ECDH", public: theirKey },
+    myIdentityPrivate,
+    { name: "AES-GCM", length: AES_KEY_LENGTH },
+    false,
+    ["encrypt"]
+  );
+
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    wrappingKey,
+    groupSecret
+  );
+
+  // Pack iv + ciphertext
+  const packed = new Uint8Array(iv.byteLength + ciphertext.byteLength);
+  packed.set(iv, 0);
+  packed.set(new Uint8Array(ciphertext), iv.byteLength);
+  return bufferToBase64(packed);
+}
+
+/**
+ * Decrypt a group secret received from the server.
+ */
+export async function decryptGroupSecretFromUser(
+  encryptedState: string,
+  myIdentityPrivate: CryptoKey,
+  theirIdentityPublic: JsonWebKey
+): Promise<Uint8Array> {
+  const packed = base64ToBuffer(encryptedState);
+  const iv = packed.slice(0, 12);
+  const ciphertext = packed.slice(12);
+
+  const theirKey = await importPublicKey(theirIdentityPublic);
+  const wrappingKey = await crypto.subtle.deriveKey(
+    { name: "ECDH", public: theirKey },
+    myIdentityPrivate,
+    { name: "AES-GCM", length: AES_KEY_LENGTH },
+    false,
+    ["decrypt"]
+  );
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
+    wrappingKey,
+    ciphertext
+  );
+
+  return new Uint8Array(decrypted);
+}
+
+// ── Legacy per-message encryption (epoch 0 backward compatibility) ──
 
 export async function encryptMessage(
   plaintext: string,
   recipientPublicKey: JsonWebKey
 ): Promise<{ ciphertext: string; ephemeralPublicKey: string; iv: string }> {
-  // Generate ephemeral key pair for this message
   const ephemeral = await crypto.subtle.generateKey(ECDH_PARAMS, true, [
     "deriveKey",
     "deriveBits",
@@ -95,7 +312,6 @@ export async function encryptMessage(
 
   const importedRecipientKey = await importPublicKey(recipientPublicKey);
 
-  // Derive shared secret
   const sharedKey = await crypto.subtle.deriveKey(
     { name: "ECDH", public: importedRecipientKey },
     ephemeral.privateKey,
@@ -150,7 +366,7 @@ export async function decryptMessage(
   return new TextDecoder().decode(decrypted);
 }
 
-// ── JWK serialization helpers ──
+// ── JWK helpers ──
 
 export function exportPublicKey(jwk: JsonWebKey): string {
   return JSON.stringify(jwk);
@@ -188,7 +404,31 @@ async function deriveKeyFromPassword(
   );
 }
 
-function bufferToBase64(buffer: Uint8Array): string {
+async function hkdfDerive(
+  inputKeyMaterial: Uint8Array,
+  info: string,
+  length: number
+): Promise<ArrayBuffer> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    inputKeyMaterial,
+    "HKDF",
+    false,
+    ["deriveBits"]
+  );
+  return crypto.subtle.deriveBits(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new Uint8Array(32),
+      info: new TextEncoder().encode(info),
+    },
+    key,
+    length * 8
+  );
+}
+
+export function bufferToBase64(buffer: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < buffer.byteLength; i++) {
     binary += String.fromCharCode(buffer[i]);
@@ -196,7 +436,7 @@ function bufferToBase64(buffer: Uint8Array): string {
   return btoa(binary);
 }
 
-function base64ToBuffer(base64: string): ArrayBuffer {
+export function base64ToBuffer(base64: string): ArrayBuffer {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {

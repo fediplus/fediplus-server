@@ -57,6 +57,13 @@
       "when": 1775692800000,
       "tag": "0007_search_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775779200000,
+      "tag": "0008_mls_encryption",
+      "breakpoints": true
     }
   ]
 }

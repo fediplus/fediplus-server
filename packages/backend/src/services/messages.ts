@@ -1,9 +1,11 @@
-import { eq, and, desc, lt, sql } from "drizzle-orm";
+import { eq, and, desc, lt, sql, isNull } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import {
   conversations,
   conversationParticipants,
   messages,
+  mlsKeyPackages,
+  mlsGroupState,
 } from "../db/schema/messages.js";
 import { users, profiles } from "../db/schema/users.js";
 import { notifications } from "../db/schema/notifications.js";
@@ -208,7 +210,13 @@ export async function getConversation(id: string, userId: string) {
 export async function sendMessage(
   conversationId: string,
   userId: string,
-  input: { ciphertext: string; ephemeralPublicKey: string; iv: string }
+  input: {
+    ciphertext: string;
+    ephemeralPublicKey?: string | null;
+    iv: string;
+    epoch?: number;
+    mlsCounter?: number;
+  }
 ) {
   // Verify user is participant
   const myParticipant = await db.query.conversationParticipants.findFirst({
@@ -227,8 +235,10 @@ export async function sendMessage(
       conversationId,
       senderId: userId,
       ciphertext: input.ciphertext,
-      ephemeralPublicKey: input.ephemeralPublicKey,
+      ephemeralPublicKey: input.ephemeralPublicKey ?? null,
       iv: input.iv,
+      epoch: input.epoch ?? 0,
+      mlsCounter: input.mlsCounter ?? null,
     })
     .returning();
 
@@ -259,8 +269,10 @@ export async function sendMessage(
         id: message.id,
         senderId: message.senderId,
         ciphertext: message.ciphertext,
-        ephemeralPublicKey: message.ephemeralPublicKey,
+        ephemeralPublicKey: message.ephemeralPublicKey ?? null,
         iv: message.iv,
+        epoch: message.epoch,
+        mlsCounter: message.mlsCounter ?? null,
         createdAt: message.createdAt.toISOString(),
       },
     });
@@ -371,4 +383,109 @@ export async function getUserPublicKey(userId: string) {
     },
   });
   return user;
+}
+
+// ── MLS Key Package Management ──
+
+export async function uploadKeyPackages(
+  userId: string,
+  packages: Array<{ id: string; keyData: string }>
+) {
+  const values = packages.map((pkg) => ({
+    id: pkg.id,
+    userId,
+    keyData: pkg.keyData,
+  }));
+
+  await db.insert(mlsKeyPackages).values(values);
+  return { uploaded: packages.length };
+}
+
+export async function consumeKeyPackage(targetUserId: string) {
+  // Find the oldest unconsumed key package for the target user
+  const [keyPackage] = await db
+    .select()
+    .from(mlsKeyPackages)
+    .where(
+      and(
+        eq(mlsKeyPackages.userId, targetUserId),
+        isNull(mlsKeyPackages.consumedAt)
+      )
+    )
+    .orderBy(mlsKeyPackages.createdAt)
+    .limit(1);
+
+  if (!keyPackage) return null;
+
+  // Mark it as consumed
+  await db
+    .update(mlsKeyPackages)
+    .set({ consumedAt: new Date() })
+    .where(eq(mlsKeyPackages.id, keyPackage.id));
+
+  return keyPackage;
+}
+
+export async function getAvailableKeyPackageCount(userId: string) {
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(mlsKeyPackages)
+    .where(
+      and(
+        eq(mlsKeyPackages.userId, userId),
+        isNull(mlsKeyPackages.consumedAt)
+      )
+    );
+  return count;
+}
+
+// ── MLS Group State Management ──
+
+export async function storeGroupState(
+  conversationId: string,
+  userId: string,
+  epoch: number,
+  encryptedState: string,
+  initiatorId?: string,
+  keyPackageId?: string
+) {
+  const [state] = await db
+    .insert(mlsGroupState)
+    .values({
+      conversationId,
+      userId,
+      epoch,
+      encryptedState,
+      initiatorId: initiatorId ?? null,
+      keyPackageId: keyPackageId ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [mlsGroupState.conversationId, mlsGroupState.userId, mlsGroupState.epoch],
+      set: { encryptedState },
+    })
+    .returning();
+  return state;
+}
+
+export async function getGroupState(
+  conversationId: string,
+  userId: string,
+  epoch?: number
+) {
+  const conditions = [
+    eq(mlsGroupState.conversationId, conversationId),
+    eq(mlsGroupState.userId, userId),
+  ];
+  if (epoch !== undefined) {
+    conditions.push(eq(mlsGroupState.epoch, epoch));
+  }
+
+  const results = await db
+    .select()
+    .from(mlsGroupState)
+    .where(and(...conditions))
+    .orderBy(desc(mlsGroupState.epoch))
+    .limit(1);
+
+  return results[0] ?? null;
 }

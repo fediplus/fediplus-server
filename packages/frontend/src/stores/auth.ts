@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { clearKeystore } from "@/crypto/keystore";
 
 interface AuthUser {
   id: string;
@@ -11,7 +12,10 @@ interface AuthUser {
 interface AuthState {
   user: AuthUser | null;
   token: string | null;
+  /** Transient: decrypted identity private key (not persisted). */
+  encryptionKey: CryptoKey | null;
   setAuth: (user: AuthUser, token: string) => void;
+  setEncryptionKey: (key: CryptoKey | null) => void;
   logout: () => void;
   isAuthenticated: () => boolean;
 }
@@ -21,12 +25,21 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       token: null,
+      encryptionKey: null,
       setAuth: (user, token) => set({ user, token }),
-      logout: () => set({ user: null, token: null }),
+      setEncryptionKey: (key) => set({ encryptionKey: key }),
+      logout: () => {
+        clearKeystore().catch(() => {});
+        set({ user: null, token: null, encryptionKey: null });
+      },
       isAuthenticated: () => !!get().token,
     }),
     {
       name: "fediplus-auth",
+      partialize: (state) => ({
+        user: state.user,
+        token: state.token,
+      }),
     }
   )
 );

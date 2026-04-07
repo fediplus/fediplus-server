@@ -170,6 +170,10 @@ export async function loginUser(input: LoginInput) {
       actorUri: user.actorUri,
     },
     token,
+    encryption: {
+      publicKey: user.encryptionPublicKey ?? null,
+      encryptedPrivateKey: user.encryptionPrivateKeyEnc ?? null,
+    },
   };
 }
 

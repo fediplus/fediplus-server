@@ -138,13 +138,34 @@ export const createConversationSchema = z.object({
 
 export const sendMessageSchema = z.object({
   ciphertext: z.string().min(1).max(MAX_MESSAGE_LENGTH * 4),
-  ephemeralPublicKey: z.string().min(1),
+  ephemeralPublicKey: z.string().min(1).nullish(),
   iv: z.string().min(1),
+  epoch: z.number().int().min(0).default(0),
+  mlsCounter: z.number().int().min(0).nullish(),
 });
 
 export const setupEncryptionSchema = z.object({
   encryptionPublicKey: z.string().min(1),
   encryptionPrivateKeyEnc: z.string().min(1),
+});
+
+export const uploadKeyPackagesSchema = z.object({
+  packages: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        keyData: z.string().min(1),
+      })
+    )
+    .min(1)
+    .max(20),
+});
+
+export const storeGroupStateSchema = z.object({
+  epoch: z.number().int().min(0),
+  encryptedState: z.string().min(1),
+  initiatorId: z.string().uuid().optional(),
+  keyPackageId: z.string().uuid().optional(),
 });
 
 // ── Hangout schemas ──
@@ -183,3 +204,5 @@ export type InviteToEventInput = z.infer<typeof inviteToEventSchema>;
 export type CreateConversationInput = z.infer<typeof createConversationSchema>;
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 export type SetupEncryptionInput = z.infer<typeof setupEncryptionSchema>;
+export type UploadKeyPackagesInput = z.infer<typeof uploadKeyPackagesSchema>;
+export type StoreGroupStateInput = z.infer<typeof storeGroupStateSchema>;

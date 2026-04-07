@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { useAuthStore } from "@/stores/auth";
 import {
   useMessageStore,
@@ -15,17 +14,18 @@ import { apiFetch } from "@/hooks/useApi";
 import { useSSE } from "@/hooks/useSSE";
 import { announce } from "@/a11y/announcer";
 import {
-  generateKeyPair,
-  encryptPrivateKeyForBackup,
-  decryptPrivateKeyFromBackup,
   encryptMessage,
   decryptMessage,
-  exportPublicKey,
+  encryptGroupMessage,
+  decryptGroupMessage,
 } from "@/crypto/e2ee";
+import { loadIdentityKey, loadGroupSecret } from "@/crypto/keystore";
 import styles from "./page.module.css";
 
 export default function MessagesPage() {
   const user = useAuthStore((s) => s.user);
+  const encryptionKey = useAuthStore((s) => s.encryptionKey);
+  const setEncryptionKey = useAuthStore((s) => s.setEncryptionKey);
   const {
     conversations,
     activeConversationId,
@@ -38,56 +38,50 @@ export default function MessagesPage() {
   } = useMessageStore();
 
   const [loading, setLoading] = useState(true);
-  const [needsKeySetup, setNeedsKeySetup] = useState(false);
-  const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
   const [composerText, setComposerText] = useState("");
   const [sending, setSending] = useState(false);
   const [showNewConv, setShowNewConv] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Check encryption keys on mount
+  // Load identity key from IndexedDB on mount (auto-recovery from login)
   useEffect(() => {
     if (!user) return;
 
     (async () => {
       try {
-        const keys = await apiFetch<{
-          encryptionPublicKey: string | null;
-          encryptionPrivateKeyEnc: string | null;
-        }>("/api/v1/users/me/encryption-keys");
-
-        if (!keys.encryptionPublicKey || !keys.encryptionPrivateKeyEnc) {
-          setNeedsKeySetup(true);
-        } else {
-          // Store encrypted private key — user will need to decrypt
-          setNeedsKeySetup(false);
+        // Try to load from store first, then IndexedDB
+        if (!encryptionKey) {
+          const key = await loadIdentityKey(user.id);
+          if (key) {
+            setEncryptionKey(key);
+          }
         }
       } catch {
-        setNeedsKeySetup(true);
+        // Key not available — user may need to re-login
       }
       setLoading(false);
     })();
-  }, [user]);
+  }, [user, encryptionKey, setEncryptionKey]);
 
   // Load conversations
   useEffect(() => {
-    if (!user || needsKeySetup) return;
+    if (!user) return;
 
     apiFetch<{ items: Conversation[] }>("/api/v1/conversations")
       .then((data) => setConversations(data.items))
       .catch(() => {});
-  }, [user, needsKeySetup, setConversations]);
+  }, [user, setConversations]);
 
   // Load messages when active conversation changes
   useEffect(() => {
-    if (!activeConversationId || !privateKey) return;
+    if (!activeConversationId || !encryptionKey) return;
 
     (async () => {
       try {
         const data = await apiFetch<{ items: EncryptedMessage[] }>(
           `/api/v1/conversations/${activeConversationId}/messages`
         );
-        const decrypted = await decryptMessages(data.items, privateKey);
+        const decrypted = await decryptMessages(data.items, encryptionKey, activeConversationId);
         setMessages(decrypted);
 
         // Mark as read
@@ -102,7 +96,7 @@ export default function MessagesPage() {
         // Decryption may fail if keys don't match
       }
     })();
-  }, [activeConversationId, privateKey, setMessages, conversations, decrementUnread]);
+  }, [activeConversationId, encryptionKey, setMessages, conversations, decrementUnread]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -113,7 +107,7 @@ export default function MessagesPage() {
   useSSE(
     useCallback(
       (event: string, data: unknown) => {
-        if (event === "new_message" && privateKey) {
+        if (event === "new_message" && encryptionKey) {
           const payload = data as {
             conversationId: string;
             message: EncryptedMessage;
@@ -123,7 +117,8 @@ export default function MessagesPage() {
               try {
                 const [decrypted] = await decryptMessages(
                   [payload.message],
-                  privateKey
+                  encryptionKey,
+                  payload.conversationId
                 );
                 appendMessage(decrypted);
 
@@ -144,12 +139,12 @@ export default function MessagesPage() {
           }
         }
       },
-      [privateKey, activeConversationId, appendMessage, conversations]
+      [encryptionKey, activeConversationId, appendMessage, conversations]
     )
   );
 
   async function handleSend() {
-    if (!composerText.trim() || !activeConversationId || !privateKey || sending)
+    if (!composerText.trim() || !activeConversationId || !encryptionKey || sending)
       return;
 
     setSending(true);
@@ -157,31 +152,59 @@ export default function MessagesPage() {
       const conv = conversations.find((c) => c.id === activeConversationId);
       if (!conv) return;
 
-      // For each recipient, encrypt the message with their public key
-      // In a production app, you'd send per-recipient ciphertext
-      // For now, we encrypt with the first other participant's key
-      const otherParticipant = conv.participants.find(
-        (p) => p.userId !== user?.id
-      );
-      if (!otherParticipant?.encryptionPublicKey) {
-        announce("Recipient has not set up encryption yet");
-        return;
-      }
+      // Try MLS group encryption first, fall back to legacy
+      const groupSecret = await loadGroupSecret(activeConversationId, 0);
 
-      const recipientPubKey: JsonWebKey = JSON.parse(
-        otherParticipant.encryptionPublicKey
-      );
-      const encrypted = await encryptMessage(composerText, recipientPubKey);
+      let body: Record<string, unknown>;
+
+      if (groupSecret) {
+        // MLS epoch-based encryption
+        // Counter = number of our messages in the current epoch
+        const ourMsgCount = messages.filter(
+          (m) => m.senderId === user?.id
+        ).length;
+        const encrypted = await encryptGroupMessage(
+          composerText,
+          groupSecret,
+          0,
+          ourMsgCount
+        );
+        body = {
+          ciphertext: encrypted.ciphertext,
+          iv: encrypted.iv,
+          epoch: encrypted.epoch,
+          mlsCounter: encrypted.counter,
+        };
+      } else {
+        // Legacy per-message ECDH
+        const otherParticipant = conv.participants.find(
+          (p) => p.userId !== user?.id
+        );
+        if (!otherParticipant?.encryptionPublicKey) {
+          announce("Recipient has not set up encryption yet");
+          return;
+        }
+
+        const recipientPubKey: JsonWebKey = JSON.parse(
+          otherParticipant.encryptionPublicKey
+        );
+        const encrypted = await encryptMessage(composerText, recipientPubKey);
+        body = {
+          ciphertext: encrypted.ciphertext,
+          ephemeralPublicKey: encrypted.ephemeralPublicKey,
+          iv: encrypted.iv,
+          epoch: 0,
+        };
+      }
 
       const msg = await apiFetch<EncryptedMessage>(
         `/api/v1/conversations/${activeConversationId}/messages`,
         {
           method: "POST",
-          body: JSON.stringify(encrypted),
+          body: JSON.stringify(body),
         }
       );
 
-      // Add our own message as decrypted
       appendMessage({
         id: msg.id,
         conversationId: msg.conversationId,
@@ -221,23 +244,17 @@ export default function MessagesPage() {
     );
   }
 
-  if (needsKeySetup) {
+  if (!encryptionKey) {
     return (
-      <EncryptionSetup
-        onComplete={(key) => {
-          setPrivateKey(key);
-          setNeedsKeySetup(false);
-        }}
-      />
-    );
-  }
-
-  // If we have keys stored but haven't decrypted the private key yet
-  if (!privateKey) {
-    return (
-      <UnlockKeys
-        onUnlocked={(key) => setPrivateKey(key)}
-      />
+      <div className={styles.container}>
+        <Card className={styles.setupCard}>
+          <h2 className={styles.setupTitle}>Encryption unavailable</h2>
+          <p className={styles.setupDesc}>
+            Your encryption keys could not be loaded. Please sign out and sign
+            in again to restore access to your encrypted messages.
+          </p>
+        </Card>
+      </div>
     );
   }
 
@@ -434,147 +451,6 @@ function ConversationItem({
   );
 }
 
-function EncryptionSetup({
-  onComplete,
-}: {
-  onComplete: (privateKey: CryptoKey) => void;
-}) {
-  const [password, setPassword] = useState("");
-  const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState("");
-
-  async function handleSetup(e: React.FormEvent) {
-    e.preventDefault();
-    if (!password) return;
-    setConfirming(true);
-    setError("");
-
-    try {
-      const { publicKey, privateKey } = await generateKeyPair();
-      const encryptedPrivateKey = await encryptPrivateKeyForBackup(
-        privateKey,
-        password
-      );
-
-      await apiFetch("/api/v1/users/me/encryption-keys", {
-        method: "PUT",
-        body: JSON.stringify({
-          encryptionPublicKey: exportPublicKey(publicKey),
-          encryptionPrivateKeyEnc: encryptedPrivateKey,
-        }),
-      });
-
-      announce("Encryption keys set up successfully");
-      onComplete(privateKey);
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "Failed to set up encryption"
-      );
-    } finally {
-      setConfirming(false);
-    }
-  }
-
-  return (
-    <div className={styles.container}>
-      <Card className={styles.setupCard}>
-        <h2 className={styles.setupTitle}>Set up end-to-end encryption</h2>
-        <p className={styles.setupDesc}>
-          Messages in Fedi+ are end-to-end encrypted. Your encryption keys will
-          be generated locally and your private key will be backed up encrypted
-          with your password. The server never sees your messages in plain text.
-        </p>
-        <form onSubmit={handleSetup} className={styles.setupForm}>
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
-          <Input
-            label="Enter your password to encrypt your private key"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <Button type="submit" disabled={confirming || !password}>
-            {confirming ? "Generating keys..." : "Set up encryption"}
-          </Button>
-        </form>
-      </Card>
-    </div>
-  );
-}
-
-function UnlockKeys({
-  onUnlocked,
-}: {
-  onUnlocked: (privateKey: CryptoKey) => void;
-}) {
-  const [password, setPassword] = useState("");
-  const [unlocking, setUnlocking] = useState(false);
-  const [error, setError] = useState("");
-
-  async function handleUnlock(e: React.FormEvent) {
-    e.preventDefault();
-    if (!password) return;
-    setUnlocking(true);
-    setError("");
-
-    try {
-      const keys = await apiFetch<{
-        encryptionPublicKey: string | null;
-        encryptionPrivateKeyEnc: string | null;
-      }>("/api/v1/users/me/encryption-keys");
-
-      if (!keys.encryptionPrivateKeyEnc) {
-        setError("No encryption keys found");
-        return;
-      }
-
-      const privateKey = await decryptPrivateKeyFromBackup(
-        keys.encryptionPrivateKeyEnc,
-        password
-      );
-      announce("Encryption keys unlocked");
-      onUnlocked(privateKey);
-    } catch {
-      setError("Incorrect password or corrupted keys");
-    } finally {
-      setUnlocking(false);
-    }
-  }
-
-  return (
-    <div className={styles.container}>
-      <Card className={styles.setupCard}>
-        <h2 className={styles.setupTitle}>Unlock your messages</h2>
-        <p className={styles.setupDesc}>
-          Enter your password to decrypt your private key and access your
-          encrypted messages.
-        </p>
-        <form onSubmit={handleUnlock} className={styles.setupForm}>
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
-          <Input
-            label="Password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <Button type="submit" disabled={unlocking || !password}>
-            {unlocking ? "Unlocking..." : "Unlock"}
-          </Button>
-        </form>
-      </Card>
-    </div>
-  );
-}
-
 function NewConversationSearch({
   onCreated,
 }: {
@@ -670,17 +546,39 @@ function formatRelativeTime(dateStr: string): string {
 
 async function decryptMessages(
   encrypted: EncryptedMessage[],
-  privateKey: CryptoKey
+  privateKey: CryptoKey,
+  conversationId: string
 ): Promise<DecryptedMessage[]> {
   const results: DecryptedMessage[] = [];
   for (const msg of encrypted) {
     try {
-      const plaintext = await decryptMessage(
-        msg.ciphertext,
-        msg.ephemeralPublicKey,
-        msg.iv,
-        privateKey
-      );
+      let plaintext: string;
+
+      if (msg.epoch && msg.epoch > 0 && msg.mlsCounter !== undefined && msg.mlsCounter !== null) {
+        // MLS epoch-based decryption
+        const groupSecret = await loadGroupSecret(conversationId, msg.epoch);
+        if (!groupSecret) {
+          throw new Error("Missing group secret for epoch");
+        }
+        plaintext = await decryptGroupMessage(
+          msg.ciphertext,
+          msg.iv,
+          groupSecret,
+          msg.epoch,
+          msg.mlsCounter
+        );
+      } else if (msg.ephemeralPublicKey) {
+        // Legacy per-message ECDH decryption
+        plaintext = await decryptMessage(
+          msg.ciphertext,
+          msg.ephemeralPublicKey,
+          msg.iv,
+          privateKey
+        );
+      } else {
+        throw new Error("Unknown encryption format");
+      }
+
       results.push({
         id: msg.id,
         conversationId: msg.conversationId,
