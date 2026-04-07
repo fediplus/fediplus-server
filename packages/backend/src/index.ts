@@ -23,6 +23,7 @@ import { eventRoutes } from "./routes/api/v1/events.js";
 import { messageRoutes } from "./routes/api/v1/messages.js";
 import { hangoutRoutes } from "./routes/api/v1/hangouts.js";
 import { hangoutSignalingRoutes } from "./routes/api/v1/hangout-signaling.js";
+import { searchRoutes } from "./routes/api/v1/search.js";
 import { initializeWorkers } from "./mediasoup/workers.js";
 import { startWorkers } from "./jobs/workers.js";
 
@@ -67,6 +68,7 @@ async function main() {
   await app.register(messageRoutes);
   await app.register(hangoutRoutes);
   await app.register(hangoutSignalingRoutes);
+  await app.register(searchRoutes);
 
   // Serve local media files in local storage mode
   if (config.storage.type === "local") {
