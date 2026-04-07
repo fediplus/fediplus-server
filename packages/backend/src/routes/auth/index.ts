@@ -10,19 +10,28 @@ import {
   resendVerification,
 } from "../../services/auth.js";
 import { authMiddleware } from "../../middleware/auth.js";
+import { authRateLimitMiddleware } from "../../middleware/rate-limit.js";
 
 export async function authRoutes(app: FastifyInstance) {
-  app.post("/auth/register", async (request, reply) => {
-    const input = registerSchema.parse(request.body);
-    const result = await registerUser(input);
-    return reply.status(201).send(result);
-  });
+  app.post(
+    "/auth/register",
+    { preHandler: [authRateLimitMiddleware()] },
+    async (request, reply) => {
+      const input = registerSchema.parse(request.body);
+      const result = await registerUser(input);
+      return reply.status(201).send(result);
+    }
+  );
 
-  app.post("/auth/login", async (request, reply) => {
-    const input = loginSchema.parse(request.body);
-    const result = await loginUser(input);
-    return reply.send(result);
-  });
+  app.post(
+    "/auth/login",
+    { preHandler: [authRateLimitMiddleware()] },
+    async (request, reply) => {
+      const input = loginSchema.parse(request.body);
+      const result = await loginUser(input);
+      return reply.send(result);
+    }
+  );
 
   app.post("/auth/logout", async (_request, reply) => {
     // JWT is stateless; client discards token

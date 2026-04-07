@@ -56,3 +56,104 @@ export const MAX_CONVERSATION_PARTICIPANTS = 10;
 export const HANGOUT_VISIBILITY = ["public", "private"] as const;
 export const MAX_HANGOUT_PARTICIPANTS = 10;
 export const HANGOUT_STATUS = ["waiting", "active", "ended"] as const;
+
+// ── Admin & Moderation ──
+
+export const USER_ROLES = ["user", "moderator", "admin"] as const;
+
+export const USER_STATUS = [
+  "active",
+  "suspended",
+  "disabled",
+  "pending",
+] as const;
+
+export const REPORT_TYPES = [
+  "spam",
+  "harassment",
+  "hate_speech",
+  "nudity",
+  "violence",
+  "copyright",
+  "impersonation",
+  "misinformation",
+  "other",
+] as const;
+
+export const REPORT_TARGET_TYPES = [
+  "post",
+  "user",
+  "comment",
+  "community",
+  "message",
+] as const;
+
+export const REPORT_STATUS = [
+  "open",
+  "resolved",
+  "dismissed",
+] as const;
+
+export const MODERATION_ACTIONS = [
+  "warn",
+  "silence",
+  "suspend",
+  "unsuspend",
+  "disable",
+  "enable",
+  "delete_post",
+  "hide_post",
+  "unhide_post",
+  "mark_sensitive",
+  "delete_comment",
+  "dismiss_report",
+  "resolve_report",
+  "block_domain",
+  "unblock_domain",
+  "silence_domain",
+  "unsilence_domain",
+  "update_permissions",
+  "update_role",
+  "update_settings",
+  "update_notes",
+] as const;
+
+export const DOMAIN_SEVERITY = [
+  "silence",
+  "suspend",
+  "noop",
+] as const;
+
+export const ADMIN_NOTIFICATION_TYPES = [
+  "report_filed",
+  "report_resolved",
+  "user_warned",
+  "user_suspended",
+  "appeal_filed",
+] as const;
+
+// Rate limiting
+export const RATE_LIMITS = {
+  guest: { perMinute: 60, perHour: 700 },
+  user: { perMinute: 120, perHour: 3000 },
+  reports: { perDay: 15, perMonth: 200 },
+  uploads: { perDay: 50 },
+  auth: { perMinute: 10, perHour: 50 },
+} as const;
+
+// User permission flags
+export const USER_PERMISSIONS = [
+  "can_post",
+  "can_comment",
+  "can_follow",
+  "can_react",
+  "can_upload",
+  "can_message",
+  "can_report",
+  "can_create_communities",
+] as const;
+
+export const MAX_REPORT_COMMENT_LENGTH = 2000;
+export const MAX_ADMIN_NOTE_LENGTH = 5000;
+export const MAX_APPEAL_LENGTH = 5000;
+export const MAX_WARNING_LENGTH = 5000;

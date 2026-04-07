@@ -64,6 +64,13 @@
       "when": 1775779200000,
       "tag": "0008_mls_encryption",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1775865600000,
+      "tag": "0009_admin_moderation",
+      "breakpoints": true
     }
   ]
 }

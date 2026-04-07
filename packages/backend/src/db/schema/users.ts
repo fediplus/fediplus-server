@@ -6,6 +6,7 @@ import {
   boolean,
   timestamp,
   pgEnum,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 export const actorTypeEnum = pgEnum("actor_type", [
@@ -37,6 +38,23 @@ export const users = pgTable("users", {
   privateKey: text("private_key"),
   encryptionPublicKey: text("encryption_public_key"),
   encryptionPrivateKeyEnc: text("encryption_private_key_enc"),
+  role: varchar("role", { length: 20 }).notNull().default("user"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  silenced: boolean("silenced").notNull().default(false),
+  sensitized: boolean("sensitized").notNull().default(false),
+  permissions: jsonb("permissions").notNull().default({
+    can_post: true,
+    can_comment: true,
+    can_follow: true,
+    can_react: true,
+    can_upload: true,
+    can_message: true,
+    can_report: true,
+    can_create_communities: true,
+  }),
+  adminNote: text("admin_note"),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  suspensionReason: text("suspension_reason"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

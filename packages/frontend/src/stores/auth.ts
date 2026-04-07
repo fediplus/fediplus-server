@@ -7,6 +7,7 @@ interface AuthUser {
   username: string;
   actorType: string;
   actorUri: string;
+  role?: string;
 }
 
 interface AuthState {

@@ -106,6 +106,7 @@ export default function LoginPage() {
           username: string;
           actorType: string;
           actorUri: string;
+          role?: string;
         };
         token: string;
         encryption: {

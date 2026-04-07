@@ -157,6 +157,23 @@ export async function loginUser(input: LoginInput) {
     });
   }
 
+  if (user.status === "suspended") {
+    throw Object.assign(
+      new Error(
+        user.suspensionReason
+          ? `Account suspended: ${user.suspensionReason}`
+          : "Your account has been suspended"
+      ),
+      { statusCode: 403 }
+    );
+  }
+
+  if (user.status === "disabled") {
+    throw Object.assign(new Error("Your account has been disabled"), {
+      statusCode: 403,
+    });
+  }
+
   const token = generateToken({
     userId: user.id,
     username: user.username,
@@ -168,6 +185,7 @@ export async function loginUser(input: LoginInput) {
       username: user.username,
       actorType: user.actorType,
       actorUri: user.actorUri,
+      role: user.role,
     },
     token,
     encryption: {

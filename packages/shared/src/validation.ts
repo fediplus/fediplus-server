@@ -10,12 +10,23 @@ import {
   MAX_MESSAGE_LENGTH,
   MAX_CONVERSATION_PARTICIPANTS,
   MAX_HANGOUT_PARTICIPANTS,
+  MAX_REPORT_COMMENT_LENGTH,
+  MAX_ADMIN_NOTE_LENGTH,
+  MAX_APPEAL_LENGTH,
+  MAX_WARNING_LENGTH,
   POST_VISIBILITY,
   ACTOR_TYPES,
   REACTION_TYPES,
   RSVP_STATUS,
   EVENT_VISIBILITY,
   HANGOUT_VISIBILITY,
+  REPORT_TYPES,
+  REPORT_TARGET_TYPES,
+  USER_ROLES,
+  USER_STATUS,
+  DOMAIN_SEVERITY,
+  MODERATION_ACTIONS,
+  USER_PERMISSIONS,
 } from "./constants.js";
 
 export const registerSchema = z.object({
@@ -206,3 +217,110 @@ export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 export type SetupEncryptionInput = z.infer<typeof setupEncryptionSchema>;
 export type UploadKeyPackagesInput = z.infer<typeof uploadKeyPackagesSchema>;
 export type StoreGroupStateInput = z.infer<typeof storeGroupStateSchema>;
+
+// ── Admin & Moderation schemas ──
+
+export const createReportSchema = z.object({
+  targetType: z.enum(REPORT_TARGET_TYPES),
+  targetId: z.string().uuid(),
+  type: z.enum(REPORT_TYPES),
+  comment: z.string().max(MAX_REPORT_COMMENT_LENGTH).default(""),
+});
+
+export const resolveReportSchema = z.object({
+  action: z.enum(["dismiss", "warn", "silence", "suspend", "delete_content"]),
+  note: z.string().max(MAX_ADMIN_NOTE_LENGTH).optional(),
+});
+
+export const assignReportSchema = z.object({
+  moderatorId: z.string().uuid(),
+});
+
+export const createAppealSchema = z.object({
+  text: z.string().min(1).max(MAX_APPEAL_LENGTH),
+});
+
+export const resolveAppealSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+});
+
+export const adminUpdateUserSchema = z.object({
+  role: z.enum(USER_ROLES).optional(),
+  status: z.enum(USER_STATUS).optional(),
+  sensitized: z.boolean().optional(),
+  silenced: z.boolean().optional(),
+  note: z.string().max(MAX_ADMIN_NOTE_LENGTH).optional(),
+  permissions: z.record(z.enum(USER_PERMISSIONS), z.boolean()).optional(),
+});
+
+export const issueWarningSchema = z.object({
+  action: z.enum(MODERATION_ACTIONS),
+  text: z.string().max(MAX_WARNING_LENGTH).default(""),
+  reportId: z.string().uuid().optional(),
+});
+
+export const domainBlockSchema = z.object({
+  domain: z.string().min(1).max(255),
+  severity: z.enum(DOMAIN_SEVERITY),
+  publicComment: z.string().max(MAX_ADMIN_NOTE_LENGTH).optional(),
+  privateComment: z.string().max(MAX_ADMIN_NOTE_LENGTH).optional(),
+  rejectMedia: z.boolean().default(false),
+  rejectReports: z.boolean().default(false),
+  obfuscate: z.boolean().default(false),
+});
+
+export const updateDomainBlockSchema = z.object({
+  severity: z.enum(DOMAIN_SEVERITY).optional(),
+  publicComment: z.string().max(MAX_ADMIN_NOTE_LENGTH).optional(),
+  privateComment: z.string().max(MAX_ADMIN_NOTE_LENGTH).optional(),
+  rejectMedia: z.boolean().optional(),
+  rejectReports: z.boolean().optional(),
+  obfuscate: z.boolean().optional(),
+});
+
+export const ipBlockSchema = z.object({
+  ip: z.string().min(1).max(45),
+  severity: z.enum(["sign_up_requires_approval", "sign_up_block", "no_access"]),
+  comment: z.string().max(MAX_ADMIN_NOTE_LENGTH).optional(),
+  expiresAt: z.string().datetime().optional(),
+});
+
+export const adminSettingsSchema = z.object({
+  key: z.string().min(1).max(100),
+  value: z.unknown(),
+  type: z.enum(["boolean", "number", "string", "array", "object"]).default("string"),
+  isPublic: z.boolean().default(false),
+});
+
+export const adminSearchUsersSchema = cursorPaginationSchema.extend({
+  q: z.string().max(200).optional(),
+  role: z.enum(USER_ROLES).optional(),
+  status: z.enum(USER_STATUS).optional(),
+  local: z.coerce.boolean().optional(),
+});
+
+export const adminListReportsSchema = cursorPaginationSchema.extend({
+  status: z.enum(["open", "resolved", "dismissed"]).optional(),
+  targetType: z.enum(REPORT_TARGET_TYPES).optional(),
+  assignedToMe: z.coerce.boolean().optional(),
+});
+
+export const adminListAuditLogSchema = cursorPaginationSchema.extend({
+  actorId: z.string().uuid().optional(),
+  action: z.enum(MODERATION_ACTIONS).optional(),
+});
+
+export type CreateReportInput = z.infer<typeof createReportSchema>;
+export type ResolveReportInput = z.infer<typeof resolveReportSchema>;
+export type AssignReportInput = z.infer<typeof assignReportSchema>;
+export type CreateAppealInput = z.infer<typeof createAppealSchema>;
+export type ResolveAppealInput = z.infer<typeof resolveAppealSchema>;
+export type AdminUpdateUserInput = z.infer<typeof adminUpdateUserSchema>;
+export type IssueWarningInput = z.infer<typeof issueWarningSchema>;
+export type DomainBlockInput = z.infer<typeof domainBlockSchema>;
+export type UpdateDomainBlockInput = z.infer<typeof updateDomainBlockSchema>;
+export type IpBlockInput = z.infer<typeof ipBlockSchema>;
+export type AdminSettingsInput = z.infer<typeof adminSettingsSchema>;
+export type AdminSearchUsersInput = z.infer<typeof adminSearchUsersSchema>;
+export type AdminListReportsInput = z.infer<typeof adminListReportsSchema>;
+export type AdminListAuditLogInput = z.infer<typeof adminListAuditLogSchema>;
