@@ -124,135 +124,7 @@ export function useMediasoup(hangoutId: string | null) {
     const ws = new WebSocket(getWsUrl(hangoutId, token));
     wsRef.current = ws;
 
-    ws.onopen = async () => {
-      try {
-        // Get router RTP capabilities
-        const capResponse = await sendRequest("getRouterRtpCapabilities");
-        const capData = (capResponse.data ?? capResponse) as Record<string, unknown>;
-        const rtpCapabilities = capData.rtpCapabilities as unknown as RtpCapabilities;
-
-        // Create device
-        const device = new Device();
-        await device.load({ routerRtpCapabilities: rtpCapabilities });
-        deviceRef.current = device;
-
-        // Create send transport
-        const sendResponse = await sendRequest("createWebRtcTransport", {
-          producing: true,
-        });
-        const sendData = (sendResponse.data ?? sendResponse) as Record<string, unknown>;
-
-        const sendTransport = device.createSendTransport({
-          id: sendData.id as string,
-          iceParameters: sendData.iceParameters as unknown as import("mediasoup-client/types").IceParameters,
-          iceCandidates: sendData.iceCandidates as unknown as import("mediasoup-client/types").IceCandidate[],
-          dtlsParameters: sendData.dtlsParameters as unknown as import("mediasoup-client/types").DtlsParameters,
-        });
-
-        sendTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
-          try {
-            await sendRequest("connectTransport", {
-              dtlsParameters: dtlsParameters as unknown as Record<string, unknown>,
-              producing: true,
-            });
-            callback();
-          } catch (err) {
-            errback(err as Error);
-          }
-        });
-
-        sendTransport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
-          try {
-            const response = await sendRequest("produce", {
-              kind,
-              rtpParameters: rtpParameters as unknown as Record<string, unknown>,
-              appData: appData as Record<string, unknown>,
-            });
-            const prodData = (response.data ?? response) as Record<string, unknown>;
-            const producerId = prodData.producerId as string;
-            callback({ id: producerId });
-          } catch (err) {
-            errback(err as Error);
-          }
-        });
-
-        sendTransportRef.current = sendTransport;
-
-        // Create recv transport
-        const recvResponse = await sendRequest("createWebRtcTransport", {
-          producing: false,
-        });
-        const recvData = (recvResponse.data ?? recvResponse) as Record<string, unknown>;
-
-        const recvTransport = device.createRecvTransport({
-          id: recvData.id as string,
-          iceParameters: recvData.iceParameters as unknown as import("mediasoup-client/types").IceParameters,
-          iceCandidates: recvData.iceCandidates as unknown as import("mediasoup-client/types").IceCandidate[],
-          dtlsParameters: recvData.dtlsParameters as unknown as import("mediasoup-client/types").DtlsParameters,
-        });
-
-        recvTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
-          try {
-            await sendRequest("connectTransport", {
-              dtlsParameters: dtlsParameters as unknown as Record<string, unknown>,
-              producing: false,
-            });
-            callback();
-          } catch (err) {
-            errback(err as Error);
-          }
-        });
-
-        recvTransportRef.current = recvTransport;
-
-        // Get local media
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: true,
-        });
-        localStreamRef.current = stream;
-        setLocalStream(stream);
-
-        // Produce audio and video
-        const audioTrack = stream.getAudioTracks()[0];
-        const videoTrack = stream.getVideoTracks()[0];
-
-        if (audioTrack) {
-          const audioProducer = await sendTransport.produce({
-            track: audioTrack,
-          });
-          producersRef.current.set("audio", audioProducer);
-        }
-
-        if (videoTrack) {
-          const videoProducer = await sendTransport.produce({
-            track: videoTrack,
-          });
-          producersRef.current.set("video", videoProducer);
-        }
-
-        setConnected(true);
-
-        // Consume existing participants
-        const participantsResponse = await sendRequest("getParticipants");
-        const pData = (participantsResponse.data ?? participantsResponse) as Record<string, unknown>;
-        const participants = pData.participants as Array<{
-          userId: string;
-          producers: Array<{ id: string; kind: string }>;
-        }>;
-
-        if (participants) {
-          for (const p of participants) {
-            for (const prod of p.producers) {
-              await consumeProducer(prod.id, p.userId);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Failed to connect to hangout:", err);
-      }
-    };
-
+    // Set up notification handler immediately (before open completes)
     ws.onmessage = (event) => {
       const message: SignalingMessage = JSON.parse(event.data);
 
@@ -344,6 +216,145 @@ export function useMediasoup(hangoutId: string | null) {
     ws.onclose = () => {
       setConnected(false);
     };
+
+    // Wait for WebSocket to open, then complete the full setup
+    await new Promise<void>((resolve, reject) => {
+      ws.onerror = () => {
+        reject(new Error("WebSocket connection failed"));
+      };
+
+      ws.onopen = async () => {
+        try {
+          // Get router RTP capabilities
+          const capResponse = await sendRequest("getRouterRtpCapabilities");
+          const capData = (capResponse.data ?? capResponse) as Record<string, unknown>;
+          const rtpCapabilities = capData.rtpCapabilities as unknown as RtpCapabilities;
+
+          // Create device
+          const device = new Device();
+          await device.load({ routerRtpCapabilities: rtpCapabilities });
+          deviceRef.current = device;
+
+          // Create send transport
+          const sendResponse = await sendRequest("createWebRtcTransport", {
+            producing: true,
+          });
+          const sendData = (sendResponse.data ?? sendResponse) as Record<string, unknown>;
+
+          const sendTransport = device.createSendTransport({
+            id: sendData.id as string,
+            iceParameters: sendData.iceParameters as unknown as import("mediasoup-client/types").IceParameters,
+            iceCandidates: sendData.iceCandidates as unknown as import("mediasoup-client/types").IceCandidate[],
+            dtlsParameters: sendData.dtlsParameters as unknown as import("mediasoup-client/types").DtlsParameters,
+          });
+
+          sendTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
+            try {
+              await sendRequest("connectTransport", {
+                dtlsParameters: dtlsParameters as unknown as Record<string, unknown>,
+                producing: true,
+              });
+              callback();
+            } catch (err) {
+              errback(err as Error);
+            }
+          });
+
+          sendTransport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
+            try {
+              const response = await sendRequest("produce", {
+                kind,
+                rtpParameters: rtpParameters as unknown as Record<string, unknown>,
+                appData: appData as Record<string, unknown>,
+              });
+              const prodData = (response.data ?? response) as Record<string, unknown>;
+              const producerId = prodData.producerId as string;
+              callback({ id: producerId });
+            } catch (err) {
+              errback(err as Error);
+            }
+          });
+
+          sendTransportRef.current = sendTransport;
+
+          // Create recv transport
+          const recvResponse = await sendRequest("createWebRtcTransport", {
+            producing: false,
+          });
+          const recvData = (recvResponse.data ?? recvResponse) as Record<string, unknown>;
+
+          const recvTransport = device.createRecvTransport({
+            id: recvData.id as string,
+            iceParameters: recvData.iceParameters as unknown as import("mediasoup-client/types").IceParameters,
+            iceCandidates: recvData.iceCandidates as unknown as import("mediasoup-client/types").IceCandidate[],
+            dtlsParameters: recvData.dtlsParameters as unknown as import("mediasoup-client/types").DtlsParameters,
+          });
+
+          recvTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
+            try {
+              await sendRequest("connectTransport", {
+                dtlsParameters: dtlsParameters as unknown as Record<string, unknown>,
+                producing: false,
+              });
+              callback();
+            } catch (err) {
+              errback(err as Error);
+            }
+          });
+
+          recvTransportRef.current = recvTransport;
+
+          // Get local media
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: true,
+          });
+          localStreamRef.current = stream;
+          setLocalStream(stream);
+
+          // Produce audio and video
+          const audioTrack = stream.getAudioTracks()[0];
+          const videoTrack = stream.getVideoTracks()[0];
+
+          if (audioTrack) {
+            const audioProducer = await sendTransport.produce({
+              track: audioTrack,
+            });
+            producersRef.current.set("audio", audioProducer);
+          }
+
+          if (videoTrack) {
+            const videoProducer = await sendTransport.produce({
+              track: videoTrack,
+            });
+            producersRef.current.set("video", videoProducer);
+          }
+
+          setConnected(true);
+
+          // Consume existing participants
+          const participantsResponse = await sendRequest("getParticipants");
+          const pData = (participantsResponse.data ?? participantsResponse) as Record<string, unknown>;
+          const participants = pData.participants as Array<{
+            userId: string;
+            producers: Array<{ id: string; kind: string }>;
+          }>;
+
+          if (participants) {
+            for (const p of participants) {
+              for (const prod of p.producers) {
+                await consumeProducer(prod.id, p.userId);
+              }
+            }
+          }
+
+          resolve();
+        } catch (err) {
+          console.error("Failed to connect to hangout:", err);
+          reject(err);
+        }
+      };
+    });
   }, [
     hangoutId,
     token,

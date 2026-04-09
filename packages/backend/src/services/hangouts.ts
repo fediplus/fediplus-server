@@ -455,7 +455,15 @@ export async function startStream(
     });
   }
 
-  await startRtmpStream(hangoutId, resolvedUrl);
+  const started = await startRtmpStream(hangoutId, resolvedUrl);
+  if (!started) {
+    throw Object.assign(
+      new Error(
+        "Cannot start stream — ensure at least one participant has their camera or microphone enabled"
+      ),
+      { statusCode: 400 }
+    );
+  }
 
   // Update hangout with stream info
   await db

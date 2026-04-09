@@ -227,10 +227,10 @@ export default function HangoutRoomPage() {
       ]);
       if (hangoutHistory.length > 0) setHangoutChatMessages(hangoutHistory);
       if (liveHistory.length > 0) setLiveChatMessages(liveHistory);
+      announce("You joined the hangout");
     } catch {
-      // Connection issue — participant was added, media will retry
+      announce("Failed to connect media. Please check camera and microphone permissions.");
     }
-    announce("You joined the hangout");
   }
 
   async function handleLeave() {

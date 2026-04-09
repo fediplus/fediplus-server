@@ -59,27 +59,44 @@ export async function hangoutSignalingRoutes(app: FastifyInstance) {
 
       // Get or recreate the mediasoup room (handles server restarts)
       let room = getRoom(hangoutId);
-      if (!room) {
-        // Verify the hangout exists in DB and isn't ended before creating a room
-        const hangout = db.query.hangouts.findFirst({
-          where: eq(hangouts.id, hangoutId),
-        });
-        hangout.then(async (h) => {
+      if (room) {
+        setupSocket(room, user, hangoutId, socket);
+        return;
+      }
+
+      // Room not in memory (e.g. server restart). Buffer messages while
+      // we verify the hangout in DB and recreate the mediasoup room.
+      const pendingMessages: (Buffer | string)[] = [];
+      const bufferHandler = (raw: Buffer | string) => {
+        pendingMessages.push(raw);
+      };
+      socket.on("message", bufferHandler);
+
+      db.query.hangouts
+        .findFirst({ where: eq(hangouts.id, hangoutId) })
+        .then(async (h) => {
           if (!h || h.status === "ended") {
-            socket.send(JSON.stringify({ type: "error", data: { message: "Room not found" } }));
+            socket.send(
+              JSON.stringify({ type: "error", data: { message: "Room not found" } })
+            );
             socket.close();
             return;
           }
           room = await createRoom(hangoutId);
+          socket.removeListener("message", bufferHandler);
           setupSocket(room, user, hangoutId, socket);
-        }).catch(() => {
-          socket.send(JSON.stringify({ type: "error", data: { message: "Room not found" } }));
+
+          // Replay any messages that arrived while we were setting up
+          for (const msg of pendingMessages) {
+            socket.emit("message", msg);
+          }
+        })
+        .catch(() => {
+          socket.send(
+            JSON.stringify({ type: "error", data: { message: "Room not found" } })
+          );
           socket.close();
         });
-        return;
-      }
-
-      setupSocket(room, user, hangoutId, socket);
     }
   );
 }
