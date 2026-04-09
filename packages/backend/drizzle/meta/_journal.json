@@ -85,6 +85,20 @@
       "when": 1776038400000,
       "tag": "0011_streaming_destinations",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1776124800000,
+      "tag": "0012_youtube_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1776211200000,
+      "tag": "0013_hangout_broadcast",
+      "breakpoints": true
     }
   ]
 }

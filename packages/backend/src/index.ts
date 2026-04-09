@@ -31,6 +31,7 @@ import {
 } from "./routes/api/v1/admin.js";
 import { linkPreviewRoutes } from "./routes/api/v1/link-preview.js";
 import { streamingDestinationRoutes } from "./routes/api/v1/streaming.js";
+import { youtubeRoutes } from "./routes/api/v1/youtube.js";
 import { initializeWorkers } from "./mediasoup/workers.js";
 import { startWorkers } from "./jobs/workers.js";
 
@@ -81,6 +82,7 @@ async function main() {
   await app.register(publicSettingsRoutes);
   await app.register(linkPreviewRoutes);
   await app.register(streamingDestinationRoutes);
+  await app.register(youtubeRoutes);
 
   // Serve local media files in local storage mode
   if (config.storage.type === "local") {

@@ -10,6 +10,11 @@ import {
   getStreamingDestination,
   resolveRtmpUrl,
 } from "./streaming.js";
+import {
+  getYouTubeConnection,
+  createYouTubeBroadcast,
+} from "./youtube.js";
+import { createPost } from "./posts.js";
 
 interface CreateHangoutInput {
   name?: string;
@@ -402,7 +407,7 @@ export async function updateMediaState(
 export async function startStream(
   hangoutId: string,
   userId: string,
-  rtmpUrl: string,
+  rtmpUrl?: string,
   destinationId?: string
 ) {
   const hangout = await db.query.hangouts.findFirst({
@@ -416,13 +421,38 @@ export async function startStream(
     );
   }
 
-  // Resolve the RTMP URL — prefer destination if provided
-  let resolvedUrl = rtmpUrl;
+  let resolvedUrl = rtmpUrl ?? "";
+  let youtubeBroadcastId: string | null = null;
+
   if (destinationId) {
+    // Saved destination
     const dest = await getStreamingDestination(destinationId, userId);
     if (dest) {
       resolvedUrl = resolveRtmpUrl(dest);
     }
+  } else if (!rtmpUrl) {
+    // No URL and no destination — auto-create YouTube broadcast
+    const ytConn = await getYouTubeConnection(userId);
+    if (!ytConn) {
+      throw Object.assign(
+        new Error(
+          "No RTMP URL provided and no YouTube account connected. " +
+          "Connect YouTube in Settings or provide an RTMP URL."
+        ),
+        { statusCode: 400 }
+      );
+    }
+
+    const broadcastTitle = hangout.name || "Hangout On Air";
+    const broadcast = await createYouTubeBroadcast(userId, broadcastTitle);
+    resolvedUrl = broadcast.rtmpUrl;
+    youtubeBroadcastId = broadcast.broadcastId;
+  }
+
+  if (!resolvedUrl) {
+    throw Object.assign(new Error("RTMP URL is required"), {
+      statusCode: 400,
+    });
   }
 
   const started = await startRtmpStream(hangoutId, resolvedUrl);
@@ -432,10 +462,39 @@ export async function startStream(
     });
   }
 
+  // Update hangout with stream info
   await db
     .update(hangouts)
-    .set({ rtmpUrl, rtmpActive: true, updatedAt: new Date() })
+    .set({
+      rtmpUrl: resolvedUrl,
+      rtmpActive: true,
+      youtubeBroadcastId,
+      updatedAt: new Date(),
+    })
     .where(eq(hangouts.id, hangoutId));
+
+  // Auto-post the broadcast to the creator's profile (like Google+ stream)
+  const hangoutUrl = `${config.publicUrl}/hangouts/${hangoutId}`;
+  const broadcastContent = youtubeBroadcastId
+    ? `🔴 Broadcasting now! "${hangout.name || "Hangout On Air"}" is live.\n\n` +
+      `Watch live: ${hangoutUrl}`
+    : `🔴 Now streaming live! "${hangout.name || "Hangout On Air"}"\n\n` +
+      `Join: ${hangoutUrl}`;
+
+  try {
+    const post = await createPost(userId, {
+      content: broadcastContent,
+      visibility: hangout.visibility === "public" ? "public" : "followers",
+    });
+
+    // Link the announcement post to the hangout
+    await db
+      .update(hangouts)
+      .set({ broadcastPostId: post.id })
+      .where(eq(hangouts.id, hangoutId));
+  } catch {
+    // Non-fatal — the stream still works even if the post fails
+  }
 
   // Notify participants
   const participants = await db
@@ -451,10 +510,10 @@ export async function startStream(
   broadcastToUsers(
     participants.map((p) => p.userId),
     "stream_started",
-    { hangoutId }
+    { hangoutId, youtubeBroadcastId }
   );
 
-  return { ok: true };
+  return { ok: true, youtubeBroadcastId };
 }
 
 export async function stopStream(hangoutId: string, userId: string) {

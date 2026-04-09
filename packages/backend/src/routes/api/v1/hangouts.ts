@@ -117,13 +117,15 @@ export async function hangoutRoutes(app: FastifyInstance) {
     }
   );
 
-  // Start RTMP stream (creator only)
+  // Start broadcast (creator only)
   app.post(
     "/api/v1/hangouts/:id/stream",
     { preHandler: [authMiddleware] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const { rtmpUrl, destinationId } = startStreamSchema.parse(request.body);
+      const { rtmpUrl, destinationId } = startStreamSchema.parse(
+        request.body ?? {}
+      );
       const result = await startStream(
         id,
         request.user!.userId,

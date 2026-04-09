@@ -8,6 +8,7 @@ import {
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
+import { posts } from "./posts";
 
 export const hangoutVisibilityEnum = pgEnum("hangout_visibility", [
   "public",
@@ -31,6 +32,10 @@ export const hangouts = pgTable("hangouts", {
   maxParticipants: integer("max_participants").notNull().default(10),
   rtmpUrl: varchar("rtmp_url", { length: 2048 }),
   rtmpActive: boolean("rtmp_active").notNull().default(false),
+  youtubeBroadcastId: varchar("youtube_broadcast_id", { length: 128 }),
+  broadcastPostId: uuid("broadcast_post_id").references(() => posts.id, {
+    onDelete: "set null",
+  }),
   apId: varchar("ap_id", { length: 2048 }).unique(),
   startedAt: timestamp("started_at", { withTimezone: true }),
   endedAt: timestamp("ended_at", { withTimezone: true }),

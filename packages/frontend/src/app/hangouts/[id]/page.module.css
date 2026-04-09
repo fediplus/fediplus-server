@@ -543,3 +543,22 @@
   color: var(--color-text-secondary);
   font-size: var(--text-base);
 }
+
+/* YouTube broadcast section in StreamDialog */
+.ytBroadcastSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ytChannelInfo {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.broadcastMenuBtn {
+  font-size: var(--text-lg);
+  letter-spacing: 1px;
+  padding: 0 var(--space-1);
+  min-width: auto;
+}

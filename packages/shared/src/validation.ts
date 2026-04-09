@@ -198,7 +198,7 @@ export const createHangoutSchema = z.object({
 });
 
 export const startStreamSchema = z.object({
-  rtmpUrl: z.string().min(1).max(2048),
+  rtmpUrl: z.string().min(1).max(2048).optional(),
   destinationId: z.string().uuid().optional(),
 });
 

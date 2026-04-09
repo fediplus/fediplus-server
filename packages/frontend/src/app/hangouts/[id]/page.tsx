@@ -20,6 +20,7 @@ interface HangoutDetail {
   createdById: string;
   maxParticipants: number;
   rtmpActive: boolean;
+  youtubeBroadcastId: string | null;
   participants: Array<{
     userId: string;
     username: string;
@@ -68,6 +69,8 @@ export default function HangoutRoomPage() {
   const [showHangoutChat, setShowHangoutChat] = useState(false);
   const [showLiveChat, setShowLiveChat] = useState(false);
   const [showStreamDialog, setShowStreamDialog] = useState(false);
+  const [startingBroadcast, setStartingBroadcast] = useState(false);
+  const [ytConnected, setYtConnected] = useState(false);
   const [hangoutChatMessages, setHangoutChatMessages] = useState<ChatMessageData[]>([]);
   const [liveChatMessages, setLiveChatMessages] = useState<ChatMessageData[]>([]);
   const [hangoutChatInput, setHangoutChatInput] = useState("");
@@ -88,6 +91,11 @@ export default function HangoutRoomPage() {
         router.push("/hangouts");
       })
       .finally(() => setLoading(false));
+
+    // Check if YouTube is connected (for direct broadcasting)
+    apiFetch<{ connected: boolean }>("/api/v1/youtube/connection")
+      .then((yt) => setYtConnected(yt.connected))
+      .catch(() => {});
 
     return () => {
       reset();
@@ -578,12 +586,32 @@ export default function HangoutRoomPage() {
           </button>
         )}
 
+        {currentHangout.rtmpActive && currentHangout.youtubeBroadcastId && (
+          <button
+            className={styles.controlBtn}
+            onClick={() => {
+              const embedCode =
+                `<iframe width="560" height="315" ` +
+                `src="https://www.youtube.com/embed/${currentHangout.youtubeBroadcastId}" ` +
+                `frameborder="0" allowfullscreen></iframe>`;
+              navigator.clipboard.writeText(embedCode).then(() => {
+                announce("Embed code copied to clipboard");
+              });
+            }}
+            aria-label="Copy embed code"
+            title="Copy embed code"
+          >
+            {"</>"}
+          </button>
+        )}
+
         {isCreator && (
           <button
             className={`${styles.controlBtn} ${styles.streamBtn} ${
               currentHangout.rtmpActive ? styles.streamBtnActive : ""
             }`}
-            onClick={() => {
+            disabled={startingBroadcast}
+            onClick={async () => {
               if (currentHangout.rtmpActive) {
                 apiFetch(`/api/v1/hangouts/${hangoutId}/stream`, {
                   method: "DELETE",
@@ -592,24 +620,65 @@ export default function HangoutRoomPage() {
                     ...currentHangout,
                     rtmpActive: false,
                   });
-                  announce("Live stream stopped");
+                  announce("Broadcast stopped");
                 });
+              } else if (ytConnected) {
+                // Direct broadcast — no dialog, just like original HoA
+                setStartingBroadcast(true);
+                try {
+                  await apiFetch(`/api/v1/hangouts/${hangoutId}/stream`, {
+                    method: "POST",
+                    body: JSON.stringify({}),
+                  });
+                  setCurrentHangout({
+                    ...currentHangout,
+                    rtmpActive: true,
+                  });
+                  announce("Broadcasting now! Live on your profile and YouTube");
+                } catch (err) {
+                  announce(
+                    err instanceof Error
+                      ? err.message
+                      : "Failed to start broadcast",
+                    "assertive"
+                  );
+                } finally {
+                  setStartingBroadcast(false);
+                }
               } else {
+                // No YouTube — show the destination picker dialog
                 setShowStreamDialog(true);
               }
             }}
             aria-label={
               currentHangout.rtmpActive
-                ? "Stop live stream"
-                : "Start Hangout On Air"
+                ? "Stop broadcasting"
+                : startingBroadcast
+                  ? "Starting broadcast…"
+                  : "Start broadcasting"
             }
             title={
               currentHangout.rtmpActive
-                ? "Stop streaming"
-                : "Hangout On Air"
+                ? "Stop broadcasting"
+                : "Start broadcasting"
             }
           >
-            {currentHangout.rtmpActive ? "Stop LIVE" : "On Air"}
+            {currentHangout.rtmpActive
+              ? "Stop broadcasting"
+              : startingBroadcast
+                ? "Starting…"
+                : "Start broadcasting"}
+          </button>
+        )}
+
+        {isCreator && !currentHangout.rtmpActive && (
+          <button
+            className={`${styles.controlBtn} ${styles.broadcastMenuBtn}`}
+            onClick={() => setShowStreamDialog(true)}
+            aria-label="More broadcast options"
+            title="More broadcast options"
+          >
+            {"\u22EE"}
           </button>
         )}
 
@@ -626,6 +695,7 @@ export default function HangoutRoomPage() {
       {showStreamDialog && (
         <StreamDialog
           hangoutId={hangoutId}
+          hangoutName={currentHangout.name || "Hangout On Air"}
           onClose={() => setShowStreamDialog(false)}
           onStarted={() => {
             setShowStreamDialog(false);
@@ -734,10 +804,12 @@ function LocalVideoPreview({ stream }: { stream: MediaStream }) {
 
 function StreamDialog({
   hangoutId,
+  hangoutName,
   onClose,
   onStarted,
 }: {
   hangoutId: string;
+  hangoutName: string;
   onClose: () => void;
   onStarted: () => void;
 }) {
@@ -758,8 +830,18 @@ function StreamDialog({
   const [loadingDests, setLoadingDests] = useState(true);
   const [useManual, setUseManual] = useState(false);
 
+  // YouTube state
+  type StreamMode = "saved" | "youtube" | "manual";
+  const [streamMode, setStreamMode] = useState<StreamMode>("saved");
+  const [ytConnected, setYtConnected] = useState(false);
+  const [ytChannelTitle, setYtChannelTitle] = useState("");
+
+
   useEffect(() => {
-    apiFetch<typeof destinations>("/api/v1/streaming/destinations")
+    // Fetch saved destinations and YouTube connection in parallel
+    const destsPromise = apiFetch<typeof destinations>(
+      "/api/v1/streaming/destinations"
+    )
       .then((dests) => {
         setDestinations(dests);
         const defaultDest = dests.find((d) => d.isDefault);
@@ -767,14 +849,35 @@ function StreamDialog({
           setSelectedDestId(defaultDest.id);
         } else if (dests.length > 0) {
           setSelectedDestId(dests[0].id);
-        } else {
-          setUseManual(true);
         }
+        return dests;
       })
-      .catch(() => {
-        setUseManual(true);
+      .catch(() => [] as typeof destinations);
+
+    const ytPromise = apiFetch<{
+      connected: boolean;
+      channelTitle?: string;
+    }>("/api/v1/youtube/connection")
+      .then((yt) => {
+        if (yt.connected) {
+          setYtConnected(true);
+          setYtChannelTitle(yt.channelTitle ?? "");
+        }
+        return yt;
       })
-      .finally(() => setLoadingDests(false));
+      .catch(() => ({ connected: false }));
+
+    Promise.all([destsPromise, ytPromise]).then(([dests, yt]) => {
+      // Default to the best available mode
+      if (yt.connected) {
+        setStreamMode("youtube");
+      } else if (dests.length > 0) {
+        setStreamMode("saved");
+      } else {
+        setStreamMode("manual");
+      }
+      setLoadingDests(false);
+    });
   }, []);
 
   async function handleStart(e: React.FormEvent) {
@@ -783,25 +886,42 @@ function StreamDialog({
     setError("");
 
     try {
-      const body: Record<string, string> = {};
-      if (useManual || !selectedDestId) {
+      if (streamMode === "youtube") {
+        // Create YouTube broadcast first, then start the stream with returned RTMP
+        const broadcast = await apiFetch<{
+          broadcastId: string;
+          rtmpUrl: string;
+          streamKey: string;
+        }>("/api/v1/youtube/broadcast", {
+          method: "POST",
+          body: JSON.stringify({ title: hangoutName }),
+        });
+
+        await apiFetch(`/api/v1/hangouts/${hangoutId}/stream`, {
+          method: "POST",
+          body: JSON.stringify({ rtmpUrl: broadcast.rtmpUrl }),
+        });
+      } else if (streamMode === "manual" || !selectedDestId) {
         if (!rtmpUrl.trim()) {
           setError("RTMP URL is required");
           setSubmitting(false);
           return;
         }
-        body.rtmpUrl = rtmpUrl;
+        await apiFetch(`/api/v1/hangouts/${hangoutId}/stream`, {
+          method: "POST",
+          body: JSON.stringify({ rtmpUrl }),
+        });
       } else {
-        body.destinationId = selectedDestId;
-        // Still need some rtmpUrl for the schema - use the destination's URL
         const dest = destinations.find((d) => d.id === selectedDestId);
-        body.rtmpUrl = dest?.rtmpUrl ?? "";
+        await apiFetch(`/api/v1/hangouts/${hangoutId}/stream`, {
+          method: "POST",
+          body: JSON.stringify({
+            destinationId: selectedDestId,
+            rtmpUrl: dest?.rtmpUrl ?? "",
+          }),
+        });
       }
 
-      await apiFetch(`/api/v1/hangouts/${hangoutId}/stream`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
       onStarted();
     } catch (err) {
       setError(
@@ -818,6 +938,17 @@ function StreamDialog({
     owncast: "\u{1F4E1}",
     custom: "\u{1F517}",
   };
+
+  const hasTabs =
+    (destinations.length > 0 ? 1 : 0) +
+    (ytConnected ? 1 : 0) +
+    1 /* manual */ >
+    1;
+
+  const isDisabled =
+    submitting ||
+    (streamMode === "manual" && !rtmpUrl.trim()) ||
+    (streamMode === "saved" && !selectedDestId);
 
   return (
     <div
@@ -840,26 +971,46 @@ function StreamDialog({
               </p>
             )}
 
-            {destinations.length > 0 && (
+            {hasTabs && (
               <div className={styles.destTabs}>
+                {ytConnected && (
+                  <button
+                    type="button"
+                    className={`${styles.destTab} ${streamMode === "youtube" ? styles.destTabActive : ""}`}
+                    onClick={() => setStreamMode("youtube")}
+                  >
+                    YouTube
+                  </button>
+                )}
+                {destinations.length > 0 && (
+                  <button
+                    type="button"
+                    className={`${styles.destTab} ${streamMode === "saved" ? styles.destTabActive : ""}`}
+                    onClick={() => setStreamMode("saved")}
+                  >
+                    Saved destinations
+                  </button>
+                )}
                 <button
                   type="button"
-                  className={`${styles.destTab} ${!useManual ? styles.destTabActive : ""}`}
-                  onClick={() => setUseManual(false)}
-                >
-                  Saved destinations
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.destTab} ${useManual ? styles.destTabActive : ""}`}
-                  onClick={() => setUseManual(true)}
+                  className={`${styles.destTab} ${streamMode === "manual" ? styles.destTabActive : ""}`}
+                  onClick={() => setStreamMode("manual")}
                 >
                   Manual URL
                 </button>
               </div>
             )}
 
-            {!useManual && destinations.length > 0 ? (
+            {streamMode === "youtube" && (
+              <div className={styles.ytBroadcastSection}>
+                <p className={styles.ytChannelInfo}>
+                  Streaming <strong>{hangoutName}</strong> to{" "}
+                  <strong>{ytChannelTitle}</strong> on YouTube
+                </p>
+              </div>
+            )}
+
+            {streamMode === "saved" && destinations.length > 0 && (
               <fieldset className={styles.destFieldset}>
                 <legend className="sr-only">Select streaming destination</legend>
                 {destinations.map((dest) => (
@@ -891,7 +1042,9 @@ function StreamDialog({
                   </label>
                 ))}
               </fieldset>
-            ) : (
+            )}
+
+            {streamMode === "manual" && (
               <>
                 <p className={styles.destHint}>
                   Enter the RTMP ingest URL from YouTube, Owncast, or any
@@ -902,7 +1055,7 @@ function StreamDialog({
                   value={rtmpUrl}
                   onChange={(e) => setRtmpUrl(e.target.value)}
                   placeholder="rtmp://..."
-                  required={useManual || destinations.length === 0}
+                  required
                 />
               </>
             )}
@@ -914,11 +1067,7 @@ function StreamDialog({
               <Button
                 type="submit"
                 variant="primary"
-                disabled={
-                  submitting ||
-                  (useManual && !rtmpUrl.trim()) ||
-                  (!useManual && !selectedDestId)
-                }
+                disabled={isDisabled}
               >
                 {submitting ? "Starting..." : "Go Live"}
               </Button>

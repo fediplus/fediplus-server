@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
@@ -40,9 +40,20 @@ const PLATFORM_PRESETS: Record<string, string> = {
   custom: "",
 };
 
+interface YouTubeConnection {
+  connected: boolean;
+  channelId?: string;
+  channelTitle?: string;
+  connectedAt?: string;
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const logout = useAuthStore((s) => s.logout);
+  const token = useAuthStore((s) => s.token);
 
   // Delete account state
   const [showConfirm, setShowConfirm] = useState(false);
@@ -70,6 +81,12 @@ export default function SettingsPage() {
   const [destSaving, setDestSaving] = useState(false);
   const [deletingDest, setDeletingDest] = useState<string | null>(null);
 
+  // YouTube connection state
+  const [ytConnection, setYtConnection] = useState<YouTubeConnection | null>(null);
+  const [ytLoading, setYtLoading] = useState(true);
+  const [ytDisconnecting, setYtDisconnecting] = useState(false);
+  const [ytError, setYtError] = useState("");
+
   useEffect(() => {
     apiFetch<BlockedUser[]>("/api/v1/blocks")
       .then(setBlockedUsers)
@@ -83,6 +100,37 @@ export default function SettingsPage() {
       .catch(() => setDestsError("Failed to load streaming destinations"))
       .finally(() => setDestsLoading(false));
   }, []);
+
+  useEffect(() => {
+    apiFetch<YouTubeConnection>("/api/v1/youtube/connection")
+      .then(setYtConnection)
+      .catch(() => setYtError("Failed to load YouTube connection"))
+      .finally(() => setYtLoading(false));
+  }, []);
+
+  // Handle YouTube OAuth redirect results
+  useEffect(() => {
+    if (searchParams.get("youtube_connected") === "true") {
+      announce("YouTube account connected successfully");
+      // Re-fetch connection info
+      apiFetch<YouTubeConnection>("/api/v1/youtube/connection").then(
+        setYtConnection
+      );
+    }
+    const ytErr = searchParams.get("youtube_error");
+    if (ytErr) {
+      const messages: Record<string, string> = {
+        access_denied: "YouTube connection was cancelled",
+        missing_params: "Missing parameters from YouTube",
+        invalid_state: "Session expired, please try again",
+        no_refresh_token:
+          "YouTube did not grant offline access. Please try again.",
+        connection_failed: "Failed to connect YouTube account",
+      };
+      setYtError(messages[ytErr] ?? `YouTube error: ${ytErr}`);
+      announce(messages[ytErr] ?? "YouTube connection failed", "assertive");
+    }
+  }, [searchParams]);
 
   async function handleUnblock(userId: string, username: string) {
     setUnblocking(userId);
@@ -194,6 +242,31 @@ export default function SettingsPage() {
     }
   }
 
+  function handleConnectYouTube() {
+    if (!token) return;
+    // Navigate to the OAuth endpoint — it will redirect to Google
+    window.location.href = `${API_URL}/api/v1/youtube/auth?token=${encodeURIComponent(token)}`;
+  }
+
+  async function handleDisconnectYouTube() {
+    setYtDisconnecting(true);
+    setYtError("");
+    try {
+      await apiFetch("/api/v1/youtube/connection", { method: "DELETE" });
+      setYtConnection({ connected: false });
+      announce("YouTube account disconnected");
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : "Failed to disconnect YouTube";
+      setYtError(message);
+      announce(message, "assertive");
+    } finally {
+      setYtDisconnecting(false);
+    }
+  }
+
   async function handleDelete(e: FormEvent) {
     e.preventDefault();
     setError("");
@@ -278,6 +351,69 @@ export default function SettingsPage() {
                 ))}
               </ul>
             )}
+          </div>
+        </Card>
+      </section>
+
+      <section className={styles.section} aria-labelledby="accounts-heading">
+        <Card>
+          <div className={styles.accountsSection}>
+            <h2 id="accounts-heading" className={styles.sectionTitle}>
+              Connected accounts
+            </h2>
+            <p className={styles.sectionDescription}>
+              Connect your streaming accounts to go live on Hangouts On Air
+              without entering RTMP details manually.
+            </p>
+
+            {ytError && (
+              <p className={styles.error} role="alert">
+                {ytError}
+              </p>
+            )}
+
+            <div className={styles.accountItem}>
+              <div className={styles.accountInfo}>
+                <span className={styles.accountIcon} aria-hidden="true">
+                  ▶
+                </span>
+                <div className={styles.accountDetails}>
+                  <span className={styles.accountName}>YouTube</span>
+                  {ytLoading ? (
+                    <span className={styles.accountMeta}>Loading…</span>
+                  ) : ytConnection?.connected ? (
+                    <span className={styles.accountMeta}>
+                      Connected as{" "}
+                      <strong>{ytConnection.channelTitle}</strong>
+                    </span>
+                  ) : (
+                    <span className={styles.accountMeta}>
+                      Not connected
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className={styles.accountActions}>
+                {ytLoading ? null : ytConnection?.connected ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={ytDisconnecting}
+                    onClick={handleDisconnectYouTube}
+                  >
+                    {ytDisconnecting ? "Disconnecting…" : "Disconnect"}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleConnectYouTube}
+                  >
+                    Connect YouTube
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
         </Card>
       </section>

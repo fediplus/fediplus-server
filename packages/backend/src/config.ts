@@ -48,6 +48,11 @@ export const config = {
     rtcMaxPort: parseInt(process.env.RTC_MAX_PORT ?? "49999"),
   },
 
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  },
+
   get domain() {
     const url = new URL(this.publicUrl);
     return url.host;
