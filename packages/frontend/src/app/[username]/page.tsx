@@ -5,8 +5,9 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { apiFetch } from "@/hooks/useApi";
+import { apiFetch, ApiError } from "@/hooks/useApi";
 import { useAuthStore } from "@/stores/auth";
+import { announce } from "@/a11y/announcer";
 import styles from "./page.module.css";
 
 interface UserProfile {
@@ -30,10 +31,13 @@ export default function ProfilePage() {
   const params = useParams();
   const username = (params?.username as string)?.replace("@", "");
   const currentUser = useAuthStore((s) => s.user);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)();
   const isOwnProfile = currentUser?.username === username;
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [blocked, setBlocked] = useState(false);
+  const [blockLoading, setBlockLoading] = useState(false);
 
   useEffect(() => {
     if (!username) return;
@@ -43,6 +47,43 @@ export default function ProfilePage() {
       .catch(() => setError("User not found"))
       .finally(() => setLoading(false));
   }, [username]);
+
+  // Check if this user is in our blocked list
+  useEffect(() => {
+    if (!profile || isOwnProfile || !isAuthenticated) return;
+
+    apiFetch<Array<{ id: string }>>("/api/v1/blocks")
+      .then((blockedUsers) => {
+        setBlocked(blockedUsers.some((u) => u.id === profile.id));
+      })
+      .catch(() => {});
+  }, [profile, isOwnProfile, isAuthenticated]);
+
+  async function handleBlock() {
+    if (!profile) return;
+    setBlockLoading(true);
+    try {
+      if (blocked) {
+        await apiFetch(`/api/v1/users/${profile.id}/unblock`, {
+          method: "POST",
+        });
+        setBlocked(false);
+        announce(`Unblocked ${profile.profile?.displayName ?? profile.username}`);
+      } else {
+        await apiFetch(`/api/v1/users/${profile.id}/block`, {
+          method: "POST",
+        });
+        setBlocked(true);
+        announce(`Blocked ${profile.profile?.displayName ?? profile.username}`);
+      }
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Action failed";
+      announce(message, "assertive");
+    } finally {
+      setBlockLoading(false);
+    }
+  }
 
   if (loading) return <p role="status">Loading profile...</p>;
   if (error) return <p role="alert">{error}</p>;
@@ -110,6 +151,28 @@ export default function ProfilePage() {
                 Edit Profile
               </Button>
             </Link>
+          )}
+
+          {!isOwnProfile && isAuthenticated && (
+            <div className={styles.profileActions}>
+              <Button
+                variant={blocked ? "secondary" : "danger"}
+                size="sm"
+                onClick={handleBlock}
+                disabled={blockLoading}
+                aria-label={
+                  blocked
+                    ? `Unblock ${profile.profile?.displayName ?? profile.username}`
+                    : `Block ${profile.profile?.displayName ?? profile.username}`
+                }
+              >
+                {blockLoading
+                  ? "…"
+                  : blocked
+                    ? "Unblock"
+                    : "Block"}
+              </Button>
+            </div>
           )}
         </div>
       </Card>

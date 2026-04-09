@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -10,14 +10,51 @@ import { apiFetch, ApiError } from "@/hooks/useApi";
 import { announce } from "@/a11y/announcer";
 import styles from "./page.module.css";
 
+interface BlockedUser {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
 
+  // Delete account state
   const [showConfirm, setShowConfirm] = useState(false);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Blocked users state
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const [blocksLoading, setBlocksLoading] = useState(true);
+  const [blocksError, setBlocksError] = useState("");
+  const [unblocking, setUnblocking] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch<BlockedUser[]>("/api/v1/blocks")
+      .then(setBlockedUsers)
+      .catch(() => setBlocksError("Failed to load blocked users"))
+      .finally(() => setBlocksLoading(false));
+  }, []);
+
+  async function handleUnblock(userId: string, username: string) {
+    setUnblocking(userId);
+    try {
+      await apiFetch(`/api/v1/users/${userId}/unblock`, { method: "POST" });
+      setBlockedUsers((prev) => prev.filter((u) => u.id !== userId));
+      announce(`Unblocked ${username}`);
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Failed to unblock user";
+      setBlocksError(message);
+      announce(message, "assertive");
+    } finally {
+      setUnblocking(null);
+    }
+  }
 
   async function handleDelete(e: FormEvent) {
     e.preventDefault();
@@ -45,6 +82,67 @@ export default function SettingsPage() {
   return (
     <div className={styles.container}>
       <h1 className={styles.title}>Settings</h1>
+
+      <section className={styles.section} aria-labelledby="blocked-heading">
+        <Card>
+          <div className={styles.blockedSection}>
+            <h2 id="blocked-heading" className={styles.sectionTitle}>
+              Blocked users
+            </h2>
+            <p className={styles.sectionDescription}>
+              Blocked users can&apos;t see your posts, react, reshare, or
+              message you.
+            </p>
+
+            {blocksError && (
+              <p className={styles.error} role="alert">
+                {blocksError}
+              </p>
+            )}
+
+            {blocksLoading ? (
+              <p className={styles.emptyText} role="status">
+                Loading…
+              </p>
+            ) : blockedUsers.length === 0 ? (
+              <p className={styles.emptyText}>No blocked users.</p>
+            ) : (
+              <ul className={styles.blockedList} role="list">
+                {blockedUsers.map((user) => (
+                  <li key={user.id} className={styles.blockedItem}>
+                    <div className={styles.blockedUser}>
+                      <div
+                        className={styles.blockedAvatar}
+                        role="img"
+                        aria-label={`${user.displayName ?? user.username}'s avatar`}
+                      >
+                        {(user.displayName ?? user.username).charAt(0)}
+                      </div>
+                      <div className={styles.blockedInfo}>
+                        <span className={styles.blockedName}>
+                          {user.displayName ?? user.username}
+                        </span>
+                        <span className={styles.blockedUsername}>
+                          @{user.username}
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={unblocking === user.id}
+                      onClick={() => handleUnblock(user.id, user.username)}
+                      aria-label={`Unblock ${user.username}`}
+                    >
+                      {unblocking === user.id ? "Unblocking…" : "Unblock"}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Card>
+      </section>
 
       <section className={styles.section}>
         <Card>
