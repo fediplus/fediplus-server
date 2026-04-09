@@ -18,6 +18,8 @@ import {
   createWebRtcTransport,
   connectTransport,
 } from "../../../mediasoup/transports.js";
+import { broadcastToUsers } from "../../../realtime/sse.js";
+import { hangoutChatMessageSchema } from "@fediplus/shared";
 import type {
   DtlsParameters,
   RtpParameters,
@@ -135,12 +137,53 @@ function setupSocket(
     // Clean up room socket tracking when room empties
     if (socketMap.size === 0) {
       roomSockets.delete(hangoutId);
+      clearRoomChat(hangoutId);
     }
   });
 }
 
 // Track WebSocket connections per room
 const roomSockets = new Map<string, Map<string, WebSocket>>();
+
+// In-memory chat history per room (last 200 messages)
+const MAX_CHAT_HISTORY = 200;
+
+interface ChatMessage {
+  id: string;
+  userId: string;
+  username: string;
+  displayName?: string;
+  text: string;
+  timestamp: string;
+}
+
+// Private hangout chat (participants only)
+const roomHangoutChat = new Map<string, ChatMessage[]>();
+// Public live chat (visible to stream viewers)
+const roomLiveChat = new Map<string, ChatMessage[]>();
+
+function getHangoutChat(hangoutId: string): ChatMessage[] {
+  let chat = roomHangoutChat.get(hangoutId);
+  if (!chat) {
+    chat = [];
+    roomHangoutChat.set(hangoutId, chat);
+  }
+  return chat;
+}
+
+function getLiveChat(hangoutId: string): ChatMessage[] {
+  let chat = roomLiveChat.get(hangoutId);
+  if (!chat) {
+    chat = [];
+    roomLiveChat.set(hangoutId, chat);
+  }
+  return chat;
+}
+
+export function clearRoomChat(hangoutId: string): void {
+  roomHangoutChat.delete(hangoutId);
+  roomLiveChat.delete(hangoutId);
+}
 
 function getSocketMap(hangoutId: string) {
   let map = roomSockets.get(hangoutId);
@@ -387,6 +430,99 @@ async function handleMessage(
       return {
         type: "participants",
         data: { participants },
+      };
+    }
+
+    case "hangoutChat": {
+      const parsed = hangoutChatMessageSchema.safeParse(message.data);
+      if (!parsed.success) {
+        return { type: "error", data: { message: "Invalid chat message" } };
+      }
+
+      const chatMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        userId: user.userId,
+        username: user.username,
+        text: parsed.data.text,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Store in private hangout chat history
+      const hChat = getHangoutChat(hangoutId);
+      hChat.push(chatMsg);
+      if (hChat.length > MAX_CHAT_HISTORY) {
+        hChat.shift();
+      }
+
+      // Broadcast to all participants only (private)
+      const hangoutPayload = JSON.stringify({
+        type: "hangoutChat",
+        data: chatMsg,
+      });
+      for (const [, ws] of socketMap) {
+        if (ws.readyState === 1) {
+          ws.send(hangoutPayload);
+        }
+      }
+
+      return null; // Already sent to all
+    }
+
+    case "liveChatMessage": {
+      const parsed = hangoutChatMessageSchema.safeParse(message.data);
+      if (!parsed.success) {
+        return { type: "error", data: { message: "Invalid chat message" } };
+      }
+
+      const chatMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        userId: user.userId,
+        username: user.username,
+        text: parsed.data.text,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Store in public live chat history
+      const lChat = getLiveChat(hangoutId);
+      lChat.push(chatMsg);
+      if (lChat.length > MAX_CHAT_HISTORY) {
+        lChat.shift();
+      }
+
+      // Broadcast to all participants in the room
+      const livePayload = JSON.stringify({
+        type: "liveChatMessage",
+        data: chatMsg,
+      });
+      for (const [, ws] of socketMap) {
+        if (ws.readyState === 1) {
+          ws.send(livePayload);
+        }
+      }
+
+      // Also broadcast via SSE for external live stream viewers
+      broadcastToUsers(
+        Array.from(socketMap.keys()),
+        "hangout_live_chat",
+        { hangoutId, message: chatMsg }
+      );
+
+      return null; // Already sent to all
+    }
+
+    case "getHangoutChatHistory": {
+      const hChat = getHangoutChat(hangoutId);
+      return {
+        type: "hangoutChatHistory",
+        data: { messages: hChat },
+      };
+    }
+
+    case "getLiveChatHistory": {
+      const lChat = getLiveChat(hangoutId);
+      return {
+        type: "liveChatHistory",
+        data: { messages: lChat },
       };
     }
 

@@ -6,6 +6,10 @@ import { sendEvent, broadcastToUsers } from "../realtime/sse.js";
 import { config } from "../config.js";
 import { createRoom, getRoom, closeRoom, removeParticipant } from "../mediasoup/rooms.js";
 import { startRtmpStream, stopRtmpStream } from "../mediasoup/streaming.js";
+import {
+  getStreamingDestination,
+  resolveRtmpUrl,
+} from "./streaming.js";
 
 interface CreateHangoutInput {
   name?: string;
@@ -398,7 +402,8 @@ export async function updateMediaState(
 export async function startStream(
   hangoutId: string,
   userId: string,
-  rtmpUrl: string
+  rtmpUrl: string,
+  destinationId?: string
 ) {
   const hangout = await db.query.hangouts.findFirst({
     where: eq(hangouts.id, hangoutId),
@@ -411,7 +416,16 @@ export async function startStream(
     );
   }
 
-  const started = await startRtmpStream(hangoutId, rtmpUrl);
+  // Resolve the RTMP URL — prefer destination if provided
+  let resolvedUrl = rtmpUrl;
+  if (destinationId) {
+    const dest = await getStreamingDestination(destinationId, userId);
+    if (dest) {
+      resolvedUrl = resolveRtmpUrl(dest);
+    }
+  }
+
+  const started = await startRtmpStream(hangoutId, resolvedUrl);
   if (!started) {
     throw Object.assign(new Error("Failed to start stream"), {
       statusCode: 500,

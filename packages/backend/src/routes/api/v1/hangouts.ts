@@ -123,8 +123,13 @@ export async function hangoutRoutes(app: FastifyInstance) {
     { preHandler: [authMiddleware] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const { rtmpUrl } = startStreamSchema.parse(request.body);
-      const result = await startStream(id, request.user!.userId, rtmpUrl);
+      const { rtmpUrl, destinationId } = startStreamSchema.parse(request.body);
+      const result = await startStream(
+        id,
+        request.user!.userId,
+        rtmpUrl,
+        destinationId
+      );
       if (!result) {
         return reply.status(404).send({ error: "Hangout not found" });
       }

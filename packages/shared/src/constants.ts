@@ -57,6 +57,13 @@ export const HANGOUT_VISIBILITY = ["public", "private"] as const;
 export const MAX_HANGOUT_PARTICIPANTS = 10;
 export const HANGOUT_STATUS = ["waiting", "active", "ended"] as const;
 
+export const STREAMING_PLATFORMS = ["youtube", "twitch", "owncast", "custom"] as const;
+export const MAX_STREAM_DESTINATION_NAME = 100;
+export const MAX_RTMP_URL_LENGTH = 2048;
+export const MAX_STREAM_KEY_LENGTH = 500;
+export const MAX_STREAMING_DESTINATIONS = 10;
+export const MAX_CHAT_MESSAGE_LENGTH = 500;
+
 // ── Admin & Moderation ──
 
 export const USER_ROLES = ["user", "moderator", "admin"] as const;

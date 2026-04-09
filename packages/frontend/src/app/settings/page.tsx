@@ -17,6 +17,29 @@ interface BlockedUser {
   avatarUrl: string | null;
 }
 
+interface StreamingDestination {
+  id: string;
+  name: string;
+  platform: "youtube" | "twitch" | "owncast" | "custom";
+  rtmpUrl: string;
+  streamKey: string | null;
+  isDefault: boolean;
+}
+
+const PLATFORM_LABELS: Record<string, string> = {
+  youtube: "YouTube",
+  twitch: "Twitch",
+  owncast: "Owncast",
+  custom: "Custom RTMP",
+};
+
+const PLATFORM_PRESETS: Record<string, string> = {
+  youtube: "rtmp://a.rtmp.youtube.com/live2",
+  twitch: "rtmp://live.twitch.tv/app",
+  owncast: "",
+  custom: "",
+};
+
 export default function SettingsPage() {
   const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
@@ -33,11 +56,32 @@ export default function SettingsPage() {
   const [blocksError, setBlocksError] = useState("");
   const [unblocking, setUnblocking] = useState<string | null>(null);
 
+  // Streaming destinations state
+  const [destinations, setDestinations] = useState<StreamingDestination[]>([]);
+  const [destsLoading, setDestsLoading] = useState(true);
+  const [destsError, setDestsError] = useState("");
+  const [showDestForm, setShowDestForm] = useState(false);
+  const [editingDest, setEditingDest] = useState<StreamingDestination | null>(null);
+  const [destName, setDestName] = useState("");
+  const [destPlatform, setDestPlatform] = useState<string>("youtube");
+  const [destRtmpUrl, setDestRtmpUrl] = useState("");
+  const [destStreamKey, setDestStreamKey] = useState("");
+  const [destIsDefault, setDestIsDefault] = useState(false);
+  const [destSaving, setDestSaving] = useState(false);
+  const [deletingDest, setDeletingDest] = useState<string | null>(null);
+
   useEffect(() => {
     apiFetch<BlockedUser[]>("/api/v1/blocks")
       .then(setBlockedUsers)
       .catch(() => setBlocksError("Failed to load blocked users"))
       .finally(() => setBlocksLoading(false));
+  }, []);
+
+  useEffect(() => {
+    apiFetch<StreamingDestination[]>("/api/v1/streaming/destinations")
+      .then(setDestinations)
+      .catch(() => setDestsError("Failed to load streaming destinations"))
+      .finally(() => setDestsLoading(false));
   }, []);
 
   async function handleUnblock(userId: string, username: string) {
@@ -53,6 +97,100 @@ export default function SettingsPage() {
       announce(message, "assertive");
     } finally {
       setUnblocking(null);
+    }
+  }
+
+  function resetDestForm() {
+    setDestName("");
+    setDestPlatform("youtube");
+    setDestRtmpUrl(PLATFORM_PRESETS.youtube);
+    setDestStreamKey("");
+    setDestIsDefault(false);
+    setEditingDest(null);
+    setShowDestForm(false);
+    setDestsError("");
+  }
+
+  function openNewDestForm() {
+    resetDestForm();
+    setDestRtmpUrl(PLATFORM_PRESETS.youtube);
+    setShowDestForm(true);
+  }
+
+  function openEditDestForm(dest: StreamingDestination) {
+    setEditingDest(dest);
+    setDestName(dest.name);
+    setDestPlatform(dest.platform);
+    setDestRtmpUrl(dest.rtmpUrl);
+    setDestStreamKey(dest.streamKey ?? "");
+    setDestIsDefault(dest.isDefault);
+    setShowDestForm(true);
+  }
+
+  async function handleSaveDest(e: FormEvent) {
+    e.preventDefault();
+    setDestsError("");
+    setDestSaving(true);
+    try {
+      const body = {
+        name: destName,
+        platform: destPlatform,
+        rtmpUrl: destRtmpUrl,
+        streamKey: destStreamKey || undefined,
+        isDefault: destIsDefault,
+      };
+      if (editingDest) {
+        const updated = await apiFetch<StreamingDestination>(
+          `/api/v1/streaming/destinations/${editingDest.id}`,
+          { method: "PATCH", body: JSON.stringify(body) }
+        );
+        setDestinations((prev) =>
+          prev.map((d) => {
+            if (d.id === updated.id) return updated;
+            if (updated.isDefault && d.id !== updated.id) return { ...d, isDefault: false };
+            return d;
+          })
+        );
+        announce(`Updated ${updated.name}`);
+      } else {
+        const created = await apiFetch<StreamingDestination>(
+          "/api/v1/streaming/destinations",
+          { method: "POST", body: JSON.stringify(body) }
+        );
+        setDestinations((prev) => {
+          if (created.isDefault) {
+            return [...prev.map((d) => ({ ...d, isDefault: false })), created];
+          }
+          return [...prev, created];
+        });
+        announce(`Added ${created.name}`);
+      }
+      resetDestForm();
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Failed to save destination";
+      setDestsError(message);
+      announce(message, "assertive");
+    } finally {
+      setDestSaving(false);
+    }
+  }
+
+  async function handleDeleteDest(id: string, name: string) {
+    setDeletingDest(id);
+    try {
+      await apiFetch(`/api/v1/streaming/destinations/${id}`, {
+        method: "DELETE",
+      });
+      setDestinations((prev) => prev.filter((d) => d.id !== id));
+      announce(`Deleted ${name}`);
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Failed to delete destination";
+      setDestsError(message);
+      announce(message, "assertive");
+    } finally {
+      setDeletingDest(null);
     }
   }
 
@@ -136,6 +274,176 @@ export default function SettingsPage() {
                     >
                       {unblocking === user.id ? "Unblocking…" : "Unblock"}
                     </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Card>
+      </section>
+
+      <section className={styles.section} aria-labelledby="streaming-heading">
+        <Card>
+          <div className={styles.streamingSection}>
+            <div className={styles.streamingHeader}>
+              <div>
+                <h2 id="streaming-heading" className={styles.sectionTitle}>
+                  Streaming destinations
+                </h2>
+                <p className={styles.sectionDescription}>
+                  Save your RTMP destinations for Hangouts On Air. You can
+                  quickly select these when starting a live stream.
+                </p>
+              </div>
+              {!showDestForm && destinations.length < 10 && (
+                <Button variant="primary" size="sm" onClick={openNewDestForm}>
+                  Add destination
+                </Button>
+              )}
+            </div>
+
+            {destsError && (
+              <p className={styles.error} role="alert">
+                {destsError}
+              </p>
+            )}
+
+            {showDestForm && (
+              <form
+                onSubmit={handleSaveDest}
+                className={styles.destForm}
+                aria-label={
+                  editingDest ? "Edit streaming destination" : "Add streaming destination"
+                }
+              >
+                <div className={styles.destFormGrid}>
+                  <Input
+                    label="Name"
+                    value={destName}
+                    onChange={(e) => setDestName(e.target.value)}
+                    required
+                    maxLength={100}
+                    placeholder="e.g. My YouTube channel"
+                  />
+
+                  <div className={styles.destFormField}>
+                    <label className={styles.destLabel} htmlFor="dest-platform">
+                      Platform
+                    </label>
+                    <select
+                      id="dest-platform"
+                      className={styles.destSelect}
+                      value={destPlatform}
+                      onChange={(e) => {
+                        setDestPlatform(e.target.value);
+                        const preset = PLATFORM_PRESETS[e.target.value];
+                        if (preset) setDestRtmpUrl(preset);
+                      }}
+                    >
+                      <option value="youtube">YouTube</option>
+                      <option value="twitch">Twitch</option>
+                      <option value="owncast">Owncast</option>
+                      <option value="custom">Custom RTMP</option>
+                    </select>
+                  </div>
+
+                  <Input
+                    label="RTMP URL"
+                    value={destRtmpUrl}
+                    onChange={(e) => setDestRtmpUrl(e.target.value)}
+                    required
+                    maxLength={2048}
+                    placeholder="rtmp://..."
+                  />
+
+                  <Input
+                    label="Stream key"
+                    type="password"
+                    value={destStreamKey}
+                    onChange={(e) => setDestStreamKey(e.target.value)}
+                    maxLength={500}
+                    placeholder="Your stream key (optional for some platforms)"
+                  />
+
+                  <label className={styles.destCheckboxRow}>
+                    <input
+                      type="checkbox"
+                      checked={destIsDefault}
+                      onChange={(e) => setDestIsDefault(e.target.checked)}
+                    />
+                    Set as default destination
+                  </label>
+                </div>
+
+                <div className={styles.buttonRow}>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    disabled={destSaving}
+                  >
+                    {destSaving
+                      ? "Saving…"
+                      : editingDest
+                        ? "Update"
+                        : "Add"}
+                  </Button>
+                  <button
+                    type="button"
+                    className={styles.cancelButton}
+                    onClick={resetDestForm}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {destsLoading ? (
+              <p className={styles.emptyText} role="status">
+                Loading…
+              </p>
+            ) : destinations.length === 0 && !showDestForm ? (
+              <p className={styles.emptyText}>
+                No streaming destinations configured. Add one to get started
+                with Hangouts On Air.
+              </p>
+            ) : (
+              <ul className={styles.destList} role="list">
+                {destinations.map((dest) => (
+                  <li key={dest.id} className={styles.destItem}>
+                    <div className={styles.destItemInfo}>
+                      <span className={styles.destItemName}>
+                        {dest.name}
+                        {dest.isDefault && (
+                          <span className={styles.destDefaultBadge}>
+                            Default
+                          </span>
+                        )}
+                      </span>
+                      <span className={styles.destItemPlatform}>
+                        {PLATFORM_LABELS[dest.platform] ?? dest.platform} —{" "}
+                        {dest.rtmpUrl}
+                      </span>
+                    </div>
+                    <div className={styles.destItemActions}>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => openEditDestForm(dest)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={deletingDest === dest.id}
+                        onClick={() => handleDeleteDest(dest.id, dest.name)}
+                        aria-label={`Delete ${dest.name}`}
+                      >
+                        {deletingDest === dest.id ? "Deleting…" : "Delete"}
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useAuthStore } from "@/stores/auth";
 import { useHangoutStore } from "@/stores/hangouts";
-import { useMediasoup } from "@/hooks/useMediasoup";
+import { useMediasoup, type ChatMessageData } from "@/hooks/useMediasoup";
 import { useSSE } from "@/hooks/useSSE";
 import { apiFetch } from "@/hooks/useApi";
 import { announce } from "@/a11y/announcer";
@@ -56,17 +56,24 @@ export default function HangoutRoomPage() {
     reset,
   } = useHangoutStore();
 
-  const { connect, disconnect, toggleMute, toggleCamera, shareScreen } =
-    useMediasoup(hangoutId);
+  const {
+    connect, disconnect, toggleMute, toggleCamera, shareScreen,
+    sendChatMessage, sendLiveChatMessage,
+    onChatMessage, onLiveChatMessage,
+    loadChatHistory, loadLiveChatHistory,
+  } = useMediasoup(hangoutId);
 
   const [joined, setJoined] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showChat, setShowChat] = useState(false);
+  const [showHangoutChat, setShowHangoutChat] = useState(false);
+  const [showLiveChat, setShowLiveChat] = useState(false);
   const [showStreamDialog, setShowStreamDialog] = useState(false);
-  const [chatMessages, setChatMessages] = useState<
-    Array<{ sender: string; text: string }>
-  >([]);
-  const [chatInput, setChatInput] = useState("");
+  const [hangoutChatMessages, setHangoutChatMessages] = useState<ChatMessageData[]>([]);
+  const [liveChatMessages, setLiveChatMessages] = useState<ChatMessageData[]>([]);
+  const [hangoutChatInput, setHangoutChatInput] = useState("");
+  const [liveChatInput, setLiveChatInput] = useState("");
+  const hangoutChatScrollRef = useRef<HTMLDivElement>(null);
+  const liveChatScrollRef = useRef<HTMLDivElement>(null);
 
   // Load hangout details
   useEffect(() => {
@@ -150,6 +157,48 @@ export default function HangoutRoomPage() {
     )
   );
 
+  // Listen for incoming hangout chat messages
+  useEffect(() => {
+    onChatMessage((msg: ChatMessageData) => {
+      setHangoutChatMessages((prev) => [...prev, msg]);
+    });
+  }, [onChatMessage]);
+
+  // Listen for incoming live chat messages
+  useEffect(() => {
+    onLiveChatMessage((msg: ChatMessageData) => {
+      setLiveChatMessages((prev) => [...prev, msg]);
+    });
+  }, [onLiveChatMessage]);
+
+  // Auto-scroll hangout chat
+  useEffect(() => {
+    if (hangoutChatScrollRef.current) {
+      hangoutChatScrollRef.current.scrollTop = hangoutChatScrollRef.current.scrollHeight;
+    }
+  }, [hangoutChatMessages]);
+
+  // Auto-scroll live chat
+  useEffect(() => {
+    if (liveChatScrollRef.current) {
+      liveChatScrollRef.current.scrollTop = liveChatScrollRef.current.scrollHeight;
+    }
+  }, [liveChatMessages]);
+
+  function handleSendHangoutChat() {
+    const text = hangoutChatInput.trim();
+    if (!text) return;
+    sendChatMessage(text);
+    setHangoutChatInput("");
+  }
+
+  function handleSendLiveChat() {
+    const text = liveChatInput.trim();
+    if (!text) return;
+    sendLiveChatMessage(text);
+    setLiveChatInput("");
+  }
+
   async function handleJoin() {
     try {
       await apiFetch(`/api/v1/hangouts/${hangoutId}/join`, {
@@ -157,6 +206,13 @@ export default function HangoutRoomPage() {
       });
       setJoined(true);
       await connect();
+      // Load chat histories after connecting
+      const [hangoutHistory, liveHistory] = await Promise.all([
+        loadChatHistory(),
+        loadLiveChatHistory(),
+      ]);
+      if (hangoutHistory.length > 0) setHangoutChatMessages(hangoutHistory);
+      if (liveHistory.length > 0) setLiveChatMessages(liveHistory);
       announce("You joined the hangout");
     } catch (err) {
       announce("Failed to join hangout");
@@ -318,50 +374,134 @@ export default function HangoutRoomPage() {
           ))}
         </div>
 
-        {/* Chat panel */}
-        {showChat && (
-          <div className={styles.chatPanel} role="complementary" aria-label="Text chat">
+        {/* Hangout Chat panel (private, participants only) */}
+        {showHangoutChat && (
+          <div className={styles.chatPanel} role="complementary" aria-label="Hangout chat">
             <div className={styles.chatHeader}>
-              <span>Chat</span>
+              <span>Hangout Chat</span>
               <button
-                onClick={() => setShowChat(false)}
-                aria-label="Close chat"
+                onClick={() => setShowHangoutChat(false)}
+                aria-label="Close hangout chat"
               >
                 &times;
               </button>
             </div>
             <div
+              ref={hangoutChatScrollRef}
               className={styles.chatMessages}
               role="log"
               aria-live="polite"
             >
-              {chatMessages.map((msg, i) => (
-                <div key={i} className={styles.chatMessage}>
-                  <span className={styles.chatSender}>{msg.sender}:</span>
+              {hangoutChatMessages.length === 0 && (
+                <p className={styles.chatEmpty}>No messages yet. Say hello!</p>
+              )}
+              {hangoutChatMessages.map((msg) => (
+                <div key={msg.id} className={styles.chatMessage}>
+                  <span className={styles.chatSender}>
+                    {msg.displayName || msg.username}:
+                  </span>{" "}
                   {msg.text}
+                  <span className={styles.chatTime}>
+                    {new Date(msg.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
                 </div>
               ))}
             </div>
             <div className={styles.chatInputRow}>
               <input
                 className={styles.chatInput}
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Type a message..."
-                aria-label="Chat message"
+                value={hangoutChatInput}
+                onChange={(e) => setHangoutChatInput(e.target.value)}
+                placeholder="Message participants..."
+                aria-label="Hangout chat message"
+                maxLength={500}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && chatInput.trim()) {
-                    setChatMessages((prev) => [
-                      ...prev,
-                      {
-                        sender: user?.username ?? "You",
-                        text: chatInput.trim(),
-                      },
-                    ]);
-                    setChatInput("");
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendHangoutChat();
                   }
                 }}
               />
+              <button
+                className={styles.chatSendBtn}
+                onClick={handleSendHangoutChat}
+                disabled={!hangoutChatInput.trim()}
+                aria-label="Send message"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Live Chat panel (public, visible to stream viewers — only when On Air) */}
+        {showLiveChat && (
+          <div className={`${styles.chatPanel} ${styles.liveChatPanel}`} role="complementary" aria-label="Live chat">
+            <div className={`${styles.chatHeader} ${styles.liveChatHeader}`}>
+              <span>
+                Live Chat
+                <span className={styles.chatLiveBadge}>LIVE</span>
+              </span>
+              <button
+                onClick={() => setShowLiveChat(false)}
+                aria-label="Close live chat"
+              >
+                &times;
+              </button>
+            </div>
+            <div
+              ref={liveChatScrollRef}
+              className={styles.chatMessages}
+              role="log"
+              aria-live="polite"
+            >
+              {liveChatMessages.length === 0 && (
+                <p className={styles.chatEmpty}>
+                  No live chat messages yet. Messages here are visible to stream
+                  viewers.
+                </p>
+              )}
+              {liveChatMessages.map((msg) => (
+                <div key={msg.id} className={styles.chatMessage}>
+                  <span className={styles.chatSender}>
+                    {msg.displayName || msg.username}:
+                  </span>{" "}
+                  {msg.text}
+                  <span className={styles.chatTime}>
+                    {new Date(msg.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className={styles.chatInputRow}>
+              <input
+                className={styles.chatInput}
+                value={liveChatInput}
+                onChange={(e) => setLiveChatInput(e.target.value)}
+                placeholder="Message live viewers..."
+                aria-label="Live chat message"
+                maxLength={500}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendLiveChat();
+                  }
+                }}
+              />
+              <button
+                className={styles.chatSendBtn}
+                onClick={handleSendLiveChat}
+                disabled={!liveChatInput.trim()}
+                aria-label="Send live chat message"
+              >
+                Send
+              </button>
             </div>
           </div>
         )}
@@ -410,14 +550,33 @@ export default function HangoutRoomPage() {
         </button>
 
         <button
-          className={styles.controlBtn}
-          onClick={() => setShowChat(!showChat)}
-          aria-label={showChat ? "Close chat" : "Open chat"}
-          aria-pressed={showChat}
+          className={`${styles.controlBtn} ${showHangoutChat ? styles.controlChatActive : ""}`}
+          onClick={() => {
+            setShowHangoutChat(!showHangoutChat);
+            if (!showHangoutChat) setShowLiveChat(false);
+          }}
+          aria-label={showHangoutChat ? "Close hangout chat" : "Open hangout chat"}
+          aria-pressed={showHangoutChat}
           style={{ background: "var(--color-bg-primary)" }}
+          title="Hangout Chat"
         >
           {"\uD83D\uDCAC"}
         </button>
+
+        {currentHangout.rtmpActive && (
+          <button
+            className={`${styles.controlBtn} ${styles.liveChatBtn} ${showLiveChat ? styles.controlChatActive : ""}`}
+            onClick={() => {
+              setShowLiveChat(!showLiveChat);
+              if (!showLiveChat) setShowHangoutChat(false);
+            }}
+            aria-label={showLiveChat ? "Close live chat" : "Open live chat"}
+            aria-pressed={showLiveChat}
+            title="Live Chat"
+          >
+            {"\uD83D\uDCE1"}
+          </button>
+        )}
 
         {isCreator && (
           <button
@@ -585,6 +744,38 @@ function StreamDialog({
   const [rtmpUrl, setRtmpUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [destinations, setDestinations] = useState<
+    Array<{
+      id: string;
+      name: string;
+      platform: string;
+      rtmpUrl: string;
+      streamKey: string | null;
+      isDefault: boolean;
+    }>
+  >([]);
+  const [selectedDestId, setSelectedDestId] = useState<string | null>(null);
+  const [loadingDests, setLoadingDests] = useState(true);
+  const [useManual, setUseManual] = useState(false);
+
+  useEffect(() => {
+    apiFetch<typeof destinations>("/api/v1/streaming/destinations")
+      .then((dests) => {
+        setDestinations(dests);
+        const defaultDest = dests.find((d) => d.isDefault);
+        if (defaultDest) {
+          setSelectedDestId(defaultDest.id);
+        } else if (dests.length > 0) {
+          setSelectedDestId(dests[0].id);
+        } else {
+          setUseManual(true);
+        }
+      })
+      .catch(() => {
+        setUseManual(true);
+      })
+      .finally(() => setLoadingDests(false));
+  }, []);
 
   async function handleStart(e: React.FormEvent) {
     e.preventDefault();
@@ -592,9 +783,24 @@ function StreamDialog({
     setError("");
 
     try {
+      const body: Record<string, string> = {};
+      if (useManual || !selectedDestId) {
+        if (!rtmpUrl.trim()) {
+          setError("RTMP URL is required");
+          setSubmitting(false);
+          return;
+        }
+        body.rtmpUrl = rtmpUrl;
+      } else {
+        body.destinationId = selectedDestId;
+        // Still need some rtmpUrl for the schema - use the destination's URL
+        const dest = destinations.find((d) => d.id === selectedDestId);
+        body.rtmpUrl = dest?.rtmpUrl ?? "";
+      }
+
       await apiFetch(`/api/v1/hangouts/${hangoutId}/stream`, {
         method: "POST",
-        body: JSON.stringify({ rtmpUrl }),
+        body: JSON.stringify(body),
       });
       onStarted();
     } catch (err) {
@@ -606,6 +812,13 @@ function StreamDialog({
     }
   }
 
+  const platformIcons: Record<string, string> = {
+    youtube: "\u25B6",
+    twitch: "\u{1F7E3}",
+    owncast: "\u{1F4E1}",
+    custom: "\u{1F517}",
+  };
+
   return (
     <div
       className={styles.dialogOverlay}
@@ -616,35 +829,102 @@ function StreamDialog({
     >
       <div className={styles.dialogContent}>
         <h2 className={styles.dialogTitle}>Hangout On Air</h2>
-        <p>
-          Enter the RTMP ingest URL from YouTube, Owncast, or any RTMP-compatible platform.
-        </p>
-        <form onSubmit={handleStart}>
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
-          <Input
-            label="RTMP URL"
-            value={rtmpUrl}
-            onChange={(e) => setRtmpUrl(e.target.value)}
-            placeholder="rtmp://..."
-            required
-          />
-          <div className={styles.dialogActions}>
-            <Button type="button" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={submitting || !rtmpUrl.trim()}
-            >
-              {submitting ? "Starting..." : "Go Live"}
-            </Button>
-          </div>
-        </form>
+
+        {loadingDests ? (
+          <p role="status">Loading destinations...</p>
+        ) : (
+          <form onSubmit={handleStart}>
+            {error && (
+              <p className={styles.error} role="alert">
+                {error}
+              </p>
+            )}
+
+            {destinations.length > 0 && (
+              <div className={styles.destTabs}>
+                <button
+                  type="button"
+                  className={`${styles.destTab} ${!useManual ? styles.destTabActive : ""}`}
+                  onClick={() => setUseManual(false)}
+                >
+                  Saved destinations
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.destTab} ${useManual ? styles.destTabActive : ""}`}
+                  onClick={() => setUseManual(true)}
+                >
+                  Manual URL
+                </button>
+              </div>
+            )}
+
+            {!useManual && destinations.length > 0 ? (
+              <fieldset className={styles.destFieldset}>
+                <legend className="sr-only">Select streaming destination</legend>
+                {destinations.map((dest) => (
+                  <label
+                    key={dest.id}
+                    className={`${styles.destOption} ${
+                      selectedDestId === dest.id ? styles.destOptionSelected : ""
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="destination"
+                      value={dest.id}
+                      checked={selectedDestId === dest.id}
+                      onChange={() => setSelectedDestId(dest.id)}
+                      className="sr-only"
+                    />
+                    <span className={styles.destIcon}>
+                      {platformIcons[dest.platform] ?? "\u{1F517}"}
+                    </span>
+                    <div className={styles.destInfo}>
+                      <span className={styles.destName}>{dest.name}</span>
+                      <span className={styles.destPlatform}>
+                        {dest.platform.charAt(0).toUpperCase() +
+                          dest.platform.slice(1)}
+                        {dest.isDefault ? " \u2022 Default" : ""}
+                      </span>
+                    </div>
+                  </label>
+                ))}
+              </fieldset>
+            ) : (
+              <>
+                <p className={styles.destHint}>
+                  Enter the RTMP ingest URL from YouTube, Owncast, or any
+                  RTMP-compatible platform.
+                </p>
+                <Input
+                  label="RTMP URL"
+                  value={rtmpUrl}
+                  onChange={(e) => setRtmpUrl(e.target.value)}
+                  placeholder="rtmp://..."
+                  required={useManual || destinations.length === 0}
+                />
+              </>
+            )}
+
+            <div className={styles.dialogActions}>
+              <Button type="button" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={
+                  submitting ||
+                  (useManual && !rtmpUrl.trim()) ||
+                  (!useManual && !selectedDestId)
+                }
+              >
+                {submitting ? "Starting..." : "Go Live"}
+              </Button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

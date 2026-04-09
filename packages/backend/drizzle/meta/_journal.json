@@ -78,6 +78,13 @@
       "when": 1775952000000,
       "tag": "0010_link_previews",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776038400000,
+      "tag": "0011_streaming_destinations",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,15 @@ import { useHangoutStore } from "@/stores/hangouts";
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:3001";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
+export interface ChatMessageData {
+  id: string;
+  userId: string;
+  username: string;
+  displayName?: string;
+  text: string;
+  timestamp: string;
+}
+
 function getWsUrl(hangoutId: string, token: string) {
   return `${WS_URL}/api/v1/hangouts/${hangoutId}/ws?token=${encodeURIComponent(token)}`;
 }
@@ -47,6 +56,8 @@ export function useMediasoup(hangoutId: string | null) {
   const screenStreamRef = useRef<MediaStream | null>(null);
   const pendingRequests = useRef<Map<string, (data: Record<string, unknown>) => void>>(new Map());
   const requestIdCounter = useRef(0);
+  const hangoutChatCallbackRef = useRef<((msg: ChatMessageData) => void) | null>(null);
+  const liveChatCallbackRef = useRef<((msg: ChatMessageData) => void) | null>(null);
 
   const sendRequest = useCallback(
     (type: string, data?: Record<string, unknown>): Promise<Record<string, unknown>> => {
@@ -308,6 +319,25 @@ export function useMediasoup(hangoutId: string | null) {
           removeRemoteStream(leftUserId);
           break;
         }
+
+        case "chatMessage": {
+          // Legacy fallback — treat as hangout chat
+          const chatMsg = message.data as ChatMessageData;
+          hangoutChatCallbackRef.current?.(chatMsg);
+          break;
+        }
+
+        case "hangoutChat": {
+          const hMsg = message.data as ChatMessageData;
+          hangoutChatCallbackRef.current?.(hMsg);
+          break;
+        }
+
+        case "liveChatMessage": {
+          const lMsg = message.data as ChatMessageData;
+          liveChatCallbackRef.current?.(lMsg);
+          break;
+        }
       }
     };
 
@@ -479,6 +509,58 @@ export function useMediasoup(hangoutId: string | null) {
     }
   }, [hangoutId, token, setScreenSharing]);
 
+  const sendChatMessage = useCallback(
+    (text: string) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: "hangoutChat", data: { text } }));
+    },
+    []
+  );
+
+  const sendLiveChatMessage = useCallback(
+    (text: string) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: "liveChatMessage", data: { text } }));
+    },
+    []
+  );
+
+  const onChatMessage = useCallback(
+    (callback: (msg: ChatMessageData) => void) => {
+      hangoutChatCallbackRef.current = callback;
+    },
+    []
+  );
+
+  const onLiveChatMessage = useCallback(
+    (callback: (msg: ChatMessageData) => void) => {
+      liveChatCallbackRef.current = callback;
+    },
+    []
+  );
+
+  const loadChatHistory = useCallback(async (): Promise<ChatMessageData[]> => {
+    try {
+      const response = await sendRequest("getHangoutChatHistory");
+      const data = (response.data ?? response) as Record<string, unknown>;
+      return (data.messages as ChatMessageData[]) ?? [];
+    } catch {
+      return [];
+    }
+  }, [sendRequest]);
+
+  const loadLiveChatHistory = useCallback(async (): Promise<ChatMessageData[]> => {
+    try {
+      const response = await sendRequest("getLiveChatHistory");
+      const data = (response.data ?? response) as Record<string, unknown>;
+      return (data.messages as ChatMessageData[]) ?? [];
+    } catch {
+      return [];
+    }
+  }, [sendRequest]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -492,5 +574,11 @@ export function useMediasoup(hangoutId: string | null) {
     toggleMute,
     toggleCamera,
     shareScreen,
+    sendChatMessage,
+    sendLiveChatMessage,
+    onChatMessage,
+    onLiveChatMessage,
+    loadChatHistory,
+    loadLiveChatHistory,
   };
 }

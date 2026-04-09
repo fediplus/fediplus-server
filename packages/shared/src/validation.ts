@@ -14,12 +14,17 @@ import {
   MAX_ADMIN_NOTE_LENGTH,
   MAX_APPEAL_LENGTH,
   MAX_WARNING_LENGTH,
+  MAX_STREAM_DESTINATION_NAME,
+  MAX_RTMP_URL_LENGTH,
+  MAX_STREAM_KEY_LENGTH,
+  MAX_CHAT_MESSAGE_LENGTH,
   POST_VISIBILITY,
   ACTOR_TYPES,
   REACTION_TYPES,
   RSVP_STATUS,
   EVENT_VISIBILITY,
   HANGOUT_VISIBILITY,
+  STREAMING_PLATFORMS,
   REPORT_TYPES,
   REPORT_TARGET_TYPES,
   USER_ROLES,
@@ -194,6 +199,27 @@ export const createHangoutSchema = z.object({
 
 export const startStreamSchema = z.object({
   rtmpUrl: z.string().min(1).max(2048),
+  destinationId: z.string().uuid().optional(),
+});
+
+export const createStreamingDestinationSchema = z.object({
+  name: z.string().min(1).max(MAX_STREAM_DESTINATION_NAME),
+  platform: z.enum(STREAMING_PLATFORMS).default("custom"),
+  rtmpUrl: z.string().min(1).max(MAX_RTMP_URL_LENGTH),
+  streamKey: z.string().max(MAX_STREAM_KEY_LENGTH).optional(),
+  isDefault: z.boolean().default(false),
+});
+
+export const updateStreamingDestinationSchema = z.object({
+  name: z.string().min(1).max(MAX_STREAM_DESTINATION_NAME).optional(),
+  platform: z.enum(STREAMING_PLATFORMS).optional(),
+  rtmpUrl: z.string().min(1).max(MAX_RTMP_URL_LENGTH).optional(),
+  streamKey: z.string().max(MAX_STREAM_KEY_LENGTH).optional().nullable(),
+  isDefault: z.boolean().optional(),
+});
+
+export const hangoutChatMessageSchema = z.object({
+  text: z.string().min(1).max(MAX_CHAT_MESSAGE_LENGTH),
 });
 
 export const updateMediaStateSchema = z.object({
@@ -204,6 +230,9 @@ export const updateMediaStateSchema = z.object({
 
 export type CreateHangoutInput = z.infer<typeof createHangoutSchema>;
 export type StartStreamInput = z.infer<typeof startStreamSchema>;
+export type CreateStreamingDestinationInput = z.infer<typeof createStreamingDestinationSchema>;
+export type UpdateStreamingDestinationInput = z.infer<typeof updateStreamingDestinationSchema>;
+export type HangoutChatMessageInput = z.infer<typeof hangoutChatMessageSchema>;
 export type UpdateMediaStateInput = z.infer<typeof updateMediaStateSchema>;
 
 export type ReactionInput = z.infer<typeof reactionSchema>;
