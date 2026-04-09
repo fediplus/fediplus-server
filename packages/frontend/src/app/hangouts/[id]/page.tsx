@@ -212,7 +212,13 @@ export default function HangoutRoomPage() {
       await apiFetch(`/api/v1/hangouts/${hangoutId}/join`, {
         method: "POST",
       });
-      setJoined(true);
+    } catch (err) {
+      announce("Failed to join hangout");
+      return;
+    }
+
+    setJoined(true);
+    try {
       await connect();
       // Load chat histories after connecting
       const [hangoutHistory, liveHistory] = await Promise.all([
@@ -221,10 +227,10 @@ export default function HangoutRoomPage() {
       ]);
       if (hangoutHistory.length > 0) setHangoutChatMessages(hangoutHistory);
       if (liveHistory.length > 0) setLiveChatMessages(liveHistory);
-      announce("You joined the hangout");
-    } catch (err) {
-      announce("Failed to join hangout");
+    } catch {
+      // Connection issue — participant was added, media will retry
     }
+    announce("You joined the hangout");
   }
 
   async function handleLeave() {

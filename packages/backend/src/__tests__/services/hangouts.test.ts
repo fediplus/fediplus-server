@@ -121,6 +121,31 @@ vi.mock("../../realtime/sse.js", () => ({
   broadcastToUsers: (...args: unknown[]) => mockBroadcastToUsers(...args),
 }));
 
+// Mock streaming service (imported by hangouts for startStream)
+const mockGetStreamingDestination = vi.fn();
+const mockResolveRtmpUrl = vi.fn();
+
+vi.mock("../../services/streaming.js", () => ({
+  getStreamingDestination: (...args: unknown[]) => mockGetStreamingDestination(...args),
+  resolveRtmpUrl: (...args: unknown[]) => mockResolveRtmpUrl(...args),
+}));
+
+// Mock YouTube service
+const mockGetYouTubeConnection = vi.fn();
+const mockCreateYouTubeBroadcast = vi.fn();
+
+vi.mock("../../services/youtube.js", () => ({
+  getYouTubeConnection: (...args: unknown[]) => mockGetYouTubeConnection(...args),
+  createYouTubeBroadcast: (...args: unknown[]) => mockCreateYouTubeBroadcast(...args),
+}));
+
+// Mock posts service
+const mockCreatePost = vi.fn().mockResolvedValue({ id: "post-id" });
+
+vi.mock("../../services/posts.js", () => ({
+  createPost: (...args: unknown[]) => mockCreatePost(...args),
+}));
+
 // ── Import AFTER mocks ────────────────────────────────────────
 
 const {
@@ -491,7 +516,7 @@ describe("Hangouts — streaming", () => {
       "rtmp://stream.example.com/live"
     );
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, youtubeBroadcastId: null });
     expect(mockStartRtmpStream).toHaveBeenCalledWith(
       hangoutId,
       "rtmp://stream.example.com/live"
@@ -499,7 +524,7 @@ describe("Hangouts — streaming", () => {
     expect(mockBroadcastToUsers).toHaveBeenCalledWith(
       expect.any(Array),
       "stream_started",
-      { hangoutId }
+      { hangoutId, youtubeBroadcastId: null }
     );
   });
 

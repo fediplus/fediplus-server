@@ -8,9 +8,14 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const token = useAuthStore.getState().token;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...((options.headers as Record<string, string>) ?? {}),
   };
+
+  // Only set Content-Type for requests that carry a body, otherwise
+  // Fastify's JSON parser rejects the empty payload with a 400.
+  if (options.body !== undefined) {
+    headers["Content-Type"] ??= "application/json";
+  }
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
