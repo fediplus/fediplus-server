@@ -17,12 +17,22 @@ const activeStreams = new Map<string, StreamProcess>();
 export async function startRtmpStream(
   hangoutId: string,
   rtmpUrl: string
-): Promise<boolean> {
+): Promise<true> {
   const room = getRoom(hangoutId);
-  if (!room) return false;
+  if (!room) {
+    throw Object.assign(
+      new Error("Media room not found. Try refreshing the page."),
+      { statusCode: 404 }
+    );
+  }
 
   // Don't start if already streaming
-  if (activeStreams.has(hangoutId)) return false;
+  if (activeStreams.has(hangoutId)) {
+    throw Object.assign(
+      new Error("A stream is already active for this hangout"),
+      { statusCode: 409 }
+    );
+  }
 
   const router = room.router;
 
@@ -43,7 +53,13 @@ export async function startRtmpStream(
   }
 
   if (!audioProducer && !videoProducer) {
-    return false;
+    throw Object.assign(
+      new Error(
+        "No active audio or video. Make sure at least one participant " +
+        "has granted camera or microphone access."
+      ),
+      { statusCode: 400 }
+    );
   }
 
   const streamProcess: StreamProcess = {

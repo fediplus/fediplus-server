@@ -455,12 +455,7 @@ export async function startStream(
     });
   }
 
-  const started = await startRtmpStream(hangoutId, resolvedUrl);
-  if (!started) {
-    throw Object.assign(new Error("Failed to start stream"), {
-      statusCode: 500,
-    });
-  }
+  await startRtmpStream(hangoutId, resolvedUrl);
 
   // Update hangout with stream info
   await db
