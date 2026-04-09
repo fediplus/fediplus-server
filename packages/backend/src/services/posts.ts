@@ -10,6 +10,8 @@ import { resolveCircleMembers } from "./circles.js";
 import { attachMediaToPost, getMediaByPost } from "./media.js";
 import { sendEvent, broadcastToUsers } from "../realtime/sse.js";
 import { cached, invalidate, CacheKeys, CacheTTL } from "./cache.js";
+import { extractFirstUrl } from "./link-preview.js";
+import { linkPreviewQueue } from "../jobs/queues.js";
 import type { CreatePostInput } from "@fediplus/shared";
 
 // ── Follower broadcast helper ──
@@ -49,6 +51,7 @@ function parsePostJson(post: typeof posts.$inferSelect) {
     hashtags: JSON.parse(post.hashtags) as string[],
     mentions: JSON.parse(post.mentions) as string[],
     editHistory: JSON.parse(post.editHistory) as { content: string; editedAt: string }[],
+    linkPreview: post.linkPreview ? JSON.parse(post.linkPreview) : null,
   };
 }
 
@@ -230,6 +233,11 @@ export async function createPost(authorId: string, input: CreatePostInput) {
   // SSE: broadcast to followers
   const followerIds = await getFollowerIds(authorId);
   broadcastToUsers(followerIds, "new_post", { postId: post.id, authorId });
+
+  // Queue link preview extraction (async, non-blocking)
+  if (extractFirstUrl(input.content)) {
+    linkPreviewQueue.add("fetch-preview", { postId: post.id }).catch(() => {});
+  }
 
   return result;
 }

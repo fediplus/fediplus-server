@@ -3,6 +3,15 @@ import type { POST_VISIBILITY, REACTION_TYPES } from "../constants.js";
 export type PostVisibility = (typeof POST_VISIBILITY)[number];
 export type ReactionType = (typeof REACTION_TYPES)[number];
 
+export interface LinkPreview {
+  url: string;
+  title: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  siteName: string | null;
+  domain: string;
+}
+
 export interface Post {
   id: string;
   authorId: string;
@@ -16,6 +25,7 @@ export interface Post {
   sensitive: boolean;
   spoilerText: string | null;
   editHistory: PostEdit[];
+  linkPreview: LinkPreview | null;
   createdAt: Date;
   updatedAt: Date;
 }

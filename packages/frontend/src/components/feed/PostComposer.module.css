@@ -43,6 +43,10 @@
   outline: none;
 }
 
+.linkPreviewArea {
+  padding: 0 var(--space-4) var(--space-2);
+}
+
 .toolbar {
   display: flex;
   align-items: center;

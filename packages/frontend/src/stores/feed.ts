@@ -33,6 +33,14 @@ export interface StreamPost {
   sensitive: boolean;
   spoilerText: string | null;
   editHistory: { content: string; editedAt: string }[];
+  linkPreview: {
+    url: string;
+    title: string | null;
+    description: string | null;
+    imageUrl: string | null;
+    siteName: string | null;
+    domain: string;
+  } | null;
   media: MediaAttachment[];
   createdAt: string;
   updatedAt: string;

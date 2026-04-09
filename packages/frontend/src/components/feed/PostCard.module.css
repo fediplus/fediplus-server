@@ -82,6 +82,16 @@
   font-weight: var(--font-weight-medium);
 }
 
+.content :global(.link) {
+  color: var(--color-accent-blue);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.content :global(.link:hover) {
+  text-decoration: underline;
+}
+
 .actions {
   display: flex;
   border-top: 1px solid var(--color-border);

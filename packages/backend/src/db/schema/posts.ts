@@ -31,6 +31,7 @@ export const posts = pgTable("posts", {
   sensitive: boolean("sensitive").notNull().default(false),
   spoilerText: varchar("spoiler_text", { length: 200 }),
   editHistory: text("edit_history").notNull().default("[]"),
+  linkPreview: text("link_preview"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

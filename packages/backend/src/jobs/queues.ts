@@ -20,3 +20,13 @@ export const emailQueue = new Queue("email", {
     removeOnFail: { count: 1000 },
   },
 });
+
+export const linkPreviewQueue = new Queue("link-preview", {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: "exponential", delay: 3000 },
+    removeOnComplete: { count: 500 },
+    removeOnFail: { count: 500 },
+  },
+});

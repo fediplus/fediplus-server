@@ -5,6 +5,11 @@ import {
   type FederationJobData,
 } from "./processors/federation.js";
 import { processEmailJob, type EmailJobData } from "./processors/email.js";
+import { fetchAndStoreLinkPreview } from "../services/link-preview.js";
+
+interface LinkPreviewJobData {
+  postId: string;
+}
 
 const workers: Worker[] = [];
 
@@ -23,6 +28,17 @@ export function startWorkers() {
     concurrency: 2,
   });
 
+  const linkPreviewWorker = new Worker<LinkPreviewJobData>(
+    "link-preview",
+    async (job) => {
+      await fetchAndStoreLinkPreview(job.data.postId);
+    },
+    {
+      connection: redisConnection,
+      concurrency: 3,
+    }
+  );
+
   federationWorker.on("failed", (job, err) => {
     console.error(
       `[federation-worker] Job ${job?.id} (${job?.data?.type}) failed:`,
@@ -37,8 +53,15 @@ export function startWorkers() {
     );
   });
 
-  workers.push(federationWorker, emailWorker);
-  console.log("[jobs] Workers started: federation, email");
+  linkPreviewWorker.on("failed", (job, err) => {
+    console.error(
+      `[link-preview-worker] Job ${job?.id} failed:`,
+      err.message
+    );
+  });
+
+  workers.push(federationWorker, emailWorker, linkPreviewWorker);
+  console.log("[jobs] Workers started: federation, email, link-preview");
 }
 
 export async function stopWorkers() {

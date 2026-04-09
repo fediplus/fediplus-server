@@ -8,6 +8,7 @@ import { useFeedStore, type StreamPost, type MediaAttachment } from "@/stores/fe
 import { useAuthStore } from "@/stores/auth";
 import { announce } from "@/a11y/announcer";
 import { MAX_POST_LENGTH } from "@fediplus/shared";
+import { LinkPreview, type LinkPreviewData } from "./LinkPreview";
 import styles from "./PostComposer.module.css";
 
 interface PendingFile {
@@ -46,6 +47,9 @@ export function PostComposer() {
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [showAudiencePicker, setShowAudiencePicker] = useState(false);
+  const [linkPreview, setLinkPreview] = useState<LinkPreviewData | null>(null);
+  const [previewDismissed, setPreviewDismissed] = useState(false);
+  const lastPreviewUrl = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -56,6 +60,29 @@ export function PostComposer() {
         .catch(() => {});
     }
   }, [user]);
+
+  // Debounced link preview detection
+  useEffect(() => {
+    if (previewDismissed) return;
+    const urlMatch = content.match(
+      /https?:\/\/(?:[\w-]+\.)+[a-z]{2,}(?:\/[^\s<>()"]*)?/i
+    );
+    const url = urlMatch ? urlMatch[0] : null;
+
+    if (!url || url === lastPreviewUrl.current) return;
+
+    const timer = setTimeout(() => {
+      lastPreviewUrl.current = url;
+      apiFetch<LinkPreviewData>("/api/v1/links/preview", {
+        method: "POST",
+        body: JSON.stringify({ url }),
+      })
+        .then(setLinkPreview)
+        .catch(() => {});
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [content, previewDismissed]);
 
   if (!user) return null;
 
@@ -158,6 +185,7 @@ export function PostComposer() {
         mentions: post.mentions ?? [],
         editHistory: [],
         media: uploadedMedia,
+        linkPreview: null,
         replyToId: null,
         reshareOfId: null,
         sensitive: false,
@@ -171,6 +199,9 @@ export function PostComposer() {
       setPendingFiles([]);
       setSelectedCircles([]);
       setShowAudiencePicker(false);
+      setLinkPreview(null);
+      setPreviewDismissed(false);
+      lastPreviewUrl.current = null;
       announce("Post created successfully");
     } catch {
       announce("Failed to create post", "assertive");
@@ -240,6 +271,18 @@ export function PostComposer() {
                 </button>
               </div>
             ))}
+          </div>
+        )}
+
+        {linkPreview && !previewDismissed && (
+          <div className={styles.linkPreviewArea}>
+            <LinkPreview
+              preview={linkPreview}
+              onRemove={() => {
+                setLinkPreview(null);
+                setPreviewDismissed(true);
+              }}
+            />
           </div>
         )}
 

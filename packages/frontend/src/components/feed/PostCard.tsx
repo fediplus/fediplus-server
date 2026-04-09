@@ -8,6 +8,7 @@ import type { StreamPost } from "@/stores/feed";
 import { useFeedStore } from "@/stores/feed";
 import { apiFetch } from "@/hooks/useApi";
 import { announce } from "@/a11y/announcer";
+import { LinkPreview, type LinkPreviewData } from "./LinkPreview";
 import styles from "./PostCard.module.css";
 
 interface PostCardProps {
@@ -106,6 +107,10 @@ export function PostCard({ post, onComment }: PostCardProps) {
         dangerouslySetInnerHTML={{ __html: renderContent(post.content) }}
       />
 
+      {post.linkPreview && (
+        <LinkPreview preview={post.linkPreview as LinkPreviewData} />
+      )}
+
       {post.media && post.media.length > 0 && (
         <div
           className={`${styles.mediaGrid} ${post.media.length === 1 ? styles.mediaSingle : post.media.length === 2 ? styles.mediaTwo : styles.mediaMulti}`}
@@ -192,6 +197,12 @@ export function PostCard({ post, onComment }: PostCardProps) {
 
 function renderContent(content: string): string {
   let html = escapeHtml(content);
+
+  // URLs — link them before hashtags/mentions to avoid double-linking
+  html = html.replace(
+    /https?:\/\/(?:[\w-]+\.)+[a-z]{2,}(?:\/[^\s<>()"]*)?/gi,
+    '<a href="$&" target="_blank" rel="noopener noreferrer" class="link">$&</a>'
+  );
 
   // Hashtags
   html = html.replace(
