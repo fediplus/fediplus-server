@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
@@ -11,8 +11,10 @@ import type {
 import { useAuthStore } from "@/stores/auth";
 import { useHangoutStore } from "@/stores/hangouts";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:3001";
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+function getWsUrl(hangoutId: string, token: string) {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/api/v1/hangouts/${hangoutId}/ws?token=${encodeURIComponent(token)}`;
+}
 
 export interface ChatMessageData {
   id: string;
@@ -21,10 +23,6 @@ export interface ChatMessageData {
   displayName?: string;
   text: string;
   timestamp: string;
-}
-
-function getWsUrl(hangoutId: string, token: string) {
-  return `${WS_URL}/api/v1/hangouts/${hangoutId}/ws?token=${encodeURIComponent(token)}`;
 }
 
 interface SignalingMessage {
@@ -181,7 +179,7 @@ export function useMediasoup(hangoutId: string | null) {
         }
 
         case "participantJoined": {
-          // New participant connected — they will produce tracks shortly
+          // New participant connected â€” they will produce tracks shortly
           // which will trigger newProducer events
           break;
         }
@@ -193,7 +191,7 @@ export function useMediasoup(hangoutId: string | null) {
         }
 
         case "chatMessage": {
-          // Legacy fallback — treat as hangout chat
+          // Legacy fallback â€” treat as hangout chat
           const chatMsg = message.data as ChatMessageData;
           hangoutChatCallbackRef.current?.(chatMsg);
           break;
@@ -306,7 +304,7 @@ export function useMediasoup(hangoutId: string | null) {
 
           recvTransportRef.current = recvTransport;
 
-          // Get local media — try audio+video, fall back to audio-only or video-only
+          // Get local media â€” try audio+video, fall back to audio-only or video-only
           let stream: MediaStream | null = null;
           try {
             stream = await navigator.mediaDevices.getUserMedia({
@@ -314,21 +312,21 @@ export function useMediasoup(hangoutId: string | null) {
               video: true,
             });
           } catch {
-            // Camera may be unavailable — try audio only
+            // Camera may be unavailable â€” try audio only
             try {
               stream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
                 video: false,
               });
             } catch {
-              // Audio also failed — try video only
+              // Audio also failed â€” try video only
               try {
                 stream = await navigator.mediaDevices.getUserMedia({
                   audio: false,
                   video: true,
                 });
               } catch {
-                // No media at all — still allow joining to watch/chat
+                // No media at all â€” still allow joining to watch/chat
                 console.warn("No camera or microphone available");
               }
             }
@@ -442,7 +440,7 @@ export function useMediasoup(hangoutId: string | null) {
     }
 
     // Update server media state for DB/SSE
-    await fetch(`${API_URL}/api/v1/hangouts/${hangoutId}/media`, {
+    await fetch(`/api/v1/hangouts/${hangoutId}/media`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -466,7 +464,7 @@ export function useMediasoup(hangoutId: string | null) {
       setCameraOff(true);
     }
 
-    await fetch(`${API_URL}/api/v1/hangouts/${hangoutId}/media`, {
+    await fetch(`/api/v1/hangouts/${hangoutId}/media`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -490,7 +488,7 @@ export function useMediasoup(hangoutId: string | null) {
       }
       setScreenSharing(false);
 
-      await fetch(`${API_URL}/api/v1/hangouts/${hangoutId}/media`, {
+      await fetch(`/api/v1/hangouts/${hangoutId}/media`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -524,7 +522,7 @@ export function useMediasoup(hangoutId: string | null) {
         screenStreamRef.current = null;
         setScreenSharing(false);
 
-        fetch(`${API_URL}/api/v1/hangouts/${hangoutId}/media`, {
+        fetch(`/api/v1/hangouts/${hangoutId}/media`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -534,7 +532,7 @@ export function useMediasoup(hangoutId: string | null) {
         });
       };
 
-      await fetch(`${API_URL}/api/v1/hangouts/${hangoutId}/media`, {
+      await fetch(`/api/v1/hangouts/${hangoutId}/media`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
