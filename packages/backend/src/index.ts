@@ -1,4 +1,5 @@
 import "./env.js";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
@@ -36,10 +37,19 @@ import { initializeWorkers } from "./mediasoup/workers.js";
 import { startWorkers } from "./jobs/workers.js";
 
 async function main() {
+  const httpsOptions = config.tlsEnabled
+    ? {
+        key: readFileSync(config.tls.key),
+        cert: readFileSync(config.tls.cert),
+        ...(config.tls.ca ? { ca: readFileSync(config.tls.ca) } : {}),
+      }
+    : undefined;
+
   const app = Fastify({
     logger: {
       level: config.isProduction ? "info" : "debug",
     },
+    ...(httpsOptions ? { https: httpsOptions } : {}),
   });
 
   // CORS
@@ -107,7 +117,8 @@ async function main() {
 
   // Start
   await app.listen({ host: config.host, port: config.port });
-  console.log(`Fedi+ backend running at http://${config.host}:${config.port}`);
+  const protocol = config.tlsEnabled ? "https" : "http";
+  console.log(`Fedi+ backend running at ${protocol}://${config.host}:${config.port}`);
 }
 
 main().catch((err) => {

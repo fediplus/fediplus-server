@@ -1,6 +1,21 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { createSocket } from "node:dgram";
 import type { PlainTransport, Consumer } from "mediasoup/types";
 import { getRoom } from "./rooms.js";
+
+/**
+ * Grab a free UDP port by briefly binding to port 0 and releasing.
+ */
+function getFreeUdpPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const sock = createSocket("udp4");
+    sock.bind(0, "127.0.0.1", () => {
+      const { port } = sock.address();
+      sock.close(() => resolve(port));
+    });
+    sock.on("error", reject);
+  });
+}
 
 interface StreamProcess {
   ffmpeg: ChildProcess;
@@ -84,14 +99,25 @@ export async function startRtmpStream(
       comedia: false,
     });
 
+    // Allocate free ports for FFmpeg to receive RTP/RTCP on
+    const ffmpegAudioRtpPort = await getFreeUdpPort();
+    const ffmpegAudioRtcpPort = await getFreeUdpPort();
+
+    // Tell mediasoup to send RTP to FFmpeg's ports
+    await audioTransport.connect({
+      ip: "127.0.0.1",
+      port: ffmpegAudioRtpPort,
+      rtcpPort: ffmpegAudioRtcpPort,
+    });
+
     const audioConsumer = await audioTransport.consume({
       producerId: audioProducer.id,
       rtpCapabilities: router.rtpCapabilities,
       paused: false,
     });
 
-    audioPort = audioTransport.tuple.localPort;
-    audioRtcpPort = audioTransport.rtcpTuple?.localPort;
+    audioPort = ffmpegAudioRtpPort;
+    audioRtcpPort = ffmpegAudioRtcpPort;
     streamProcess.audioTransport = audioTransport;
     streamProcess.audioConsumer = audioConsumer;
   }
@@ -107,14 +133,25 @@ export async function startRtmpStream(
       comedia: false,
     });
 
+    // Allocate free ports for FFmpeg to receive video RTP/RTCP on
+    const ffmpegVideoRtpPort = await getFreeUdpPort();
+    const ffmpegVideoRtcpPort = await getFreeUdpPort();
+
+    // Tell mediasoup to send RTP to FFmpeg's ports
+    await videoTransport.connect({
+      ip: "127.0.0.1",
+      port: ffmpegVideoRtpPort,
+      rtcpPort: ffmpegVideoRtcpPort,
+    });
+
     const videoConsumer = await videoTransport.consume({
       producerId: videoProducer.id,
       rtpCapabilities: router.rtpCapabilities,
       paused: false,
     });
 
-    videoPort = videoTransport.tuple.localPort;
-    videoRtcpPort = videoTransport.rtcpTuple?.localPort;
+    videoPort = ffmpegVideoRtpPort;
+    videoRtcpPort = ffmpegVideoRtcpPort;
     streamProcess.videoTransport = videoTransport;
     streamProcess.videoConsumer = videoConsumer;
   }

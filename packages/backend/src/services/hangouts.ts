@@ -445,7 +445,10 @@ export async function startStream(
 
     const broadcastTitle = hangout.name || "Hangout On Air";
     const broadcast = await createYouTubeBroadcast(userId, broadcastTitle);
-    resolvedUrl = broadcast.rtmpUrl;
+    resolvedUrl = resolveRtmpUrl({
+      rtmpUrl: broadcast.rtmpUrl,
+      streamKey: broadcast.streamKey,
+    });
     youtubeBroadcastId = broadcast.broadcastId;
   }
 

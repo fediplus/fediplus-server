@@ -246,6 +246,7 @@ export function useMediasoup(hangoutId: string | null) {
             iceParameters: sendData.iceParameters as unknown as import("mediasoup-client/types").IceParameters,
             iceCandidates: sendData.iceCandidates as unknown as import("mediasoup-client/types").IceCandidate[],
             dtlsParameters: sendData.dtlsParameters as unknown as import("mediasoup-client/types").DtlsParameters,
+            iceServers: (sendData.iceServers as Array<RTCIceServer>) ?? [],
           });
 
           sendTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
@@ -288,6 +289,7 @@ export function useMediasoup(hangoutId: string | null) {
             iceParameters: recvData.iceParameters as unknown as import("mediasoup-client/types").IceParameters,
             iceCandidates: recvData.iceCandidates as unknown as import("mediasoup-client/types").IceCandidate[],
             dtlsParameters: recvData.dtlsParameters as unknown as import("mediasoup-client/types").DtlsParameters,
+            iceServers: (recvData.iceServers as Array<RTCIceServer>) ?? [],
           });
 
           recvTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
@@ -304,30 +306,55 @@ export function useMediasoup(hangoutId: string | null) {
 
           recvTransportRef.current = recvTransport;
 
-          // Get local media
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: true,
-          });
-          localStreamRef.current = stream;
-          setLocalStream(stream);
-
-          // Produce audio and video
-          const audioTrack = stream.getAudioTracks()[0];
-          const videoTrack = stream.getVideoTracks()[0];
-
-          if (audioTrack) {
-            const audioProducer = await sendTransport.produce({
-              track: audioTrack,
+          // Get local media — try audio+video, fall back to audio-only or video-only
+          let stream: MediaStream | null = null;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: true,
             });
-            producersRef.current.set("audio", audioProducer);
+          } catch {
+            // Camera may be unavailable — try audio only
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({
+                audio: true,
+                video: false,
+              });
+            } catch {
+              // Audio also failed — try video only
+              try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                  audio: false,
+                  video: true,
+                });
+              } catch {
+                // No media at all — still allow joining to watch/chat
+                console.warn("No camera or microphone available");
+              }
+            }
           }
 
-          if (videoTrack) {
-            const videoProducer = await sendTransport.produce({
-              track: videoTrack,
-            });
-            producersRef.current.set("video", videoProducer);
+          if (stream) {
+            localStreamRef.current = stream;
+            setLocalStream(stream);
+
+            // Produce audio and video
+            const audioTrack = stream.getAudioTracks()[0];
+            const videoTrack = stream.getVideoTracks()[0];
+
+            if (audioTrack) {
+              const audioProducer = await sendTransport.produce({
+                track: audioTrack,
+              });
+              producersRef.current.set("audio", audioProducer);
+            }
+
+            if (videoTrack) {
+              const videoProducer = await sendTransport.produce({
+                track: videoTrack,
+              });
+              producersRef.current.set("video", videoProducer);
+            }
           }
 
           setConnected(true);

@@ -22,12 +22,23 @@ export async function authMiddleware(
   request: FastifyRequest,
   reply: FastifyReply
 ) {
+  let token: string | undefined;
+
   const authHeader = request.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
+  if (authHeader?.startsWith("Bearer ")) {
+    token = authHeader.slice(7);
+  } else {
+    // Fall back to query param for SSE/EventSource (which cannot set headers)
+    const queryToken = (request.query as Record<string, string>).token;
+    if (typeof queryToken === "string" && queryToken.length > 0) {
+      token = queryToken;
+    }
+  }
+
+  if (!token) {
     return reply.status(401).send({ error: "Missing or invalid token" });
   }
 
-  const token = authHeader.slice(7);
   try {
     const payload = jwt.verify(token, config.jwt.secret) as AuthPayload;
     request.user = payload;

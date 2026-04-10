@@ -71,6 +71,7 @@ export default function HangoutRoomPage() {
   const [showStreamDialog, setShowStreamDialog] = useState(false);
   const [startingBroadcast, setStartingBroadcast] = useState(false);
   const [ytConnected, setYtConnected] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const [hangoutChatMessages, setHangoutChatMessages] = useState<ChatMessageData[]>([]);
   const [liveChatMessages, setLiveChatMessages] = useState<ChatMessageData[]>([]);
   const [hangoutChatInput, setHangoutChatInput] = useState("");
@@ -227,8 +228,29 @@ export default function HangoutRoomPage() {
       ]);
       if (hangoutHistory.length > 0) setHangoutChatMessages(hangoutHistory);
       if (liveHistory.length > 0) setLiveChatMessages(liveHistory);
-      announce("You joined the hangout");
+
+      // Check if media was acquired (connect now succeeds even without media)
+      const store = useHangoutStore.getState();
+      if (!store.localStream) {
+        setMediaError(
+          "Camera and microphone are unavailable. Check your browser permissions or device settings."
+        );
+        announce(
+          "Joined hangout without camera or microphone. Check your browser permissions.",
+          "assertive"
+        );
+      } else {
+        if (store.localStream.getAudioTracks().length === 0) {
+          setMediaError("Microphone unavailable. You can still use your camera.");
+        } else if (store.localStream.getVideoTracks().length === 0) {
+          setMediaError("Camera unavailable. You can still use your microphone.");
+        }
+        announce("You joined the hangout");
+      }
     } catch {
+      setMediaError(
+        "Failed to connect to the hangout. Please try again."
+      );
       announce("Failed to connect media. Please check camera and microphone permissions.");
     }
   }
@@ -328,6 +350,7 @@ export default function HangoutRoomPage() {
 
   const isCreator = user?.id === currentHangout.createdById;
   const participants = currentHangout.participants;
+  const hasLocalMedia = Boolean(localStream);
 
   // Determine grid class
   const count = participants.length;
@@ -358,6 +381,19 @@ export default function HangoutRoomPage() {
           {participants.length} / {currentHangout.maxParticipants}
         </span>
       </div>
+
+      {/* Media error banner */}
+      {mediaError && (
+        <div className={styles.mediaError} role="alert">
+          <span>{mediaError}</span>
+          <button
+            onClick={() => setMediaError(null)}
+            aria-label="Dismiss media error"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Screen-reader accessible participant list */}
       <div className={styles.srOnly} aria-live="polite">
@@ -616,7 +652,7 @@ export default function HangoutRoomPage() {
             className={`${styles.controlBtn} ${styles.streamBtn} ${
               currentHangout.rtmpActive ? styles.streamBtnActive : ""
             }`}
-            disabled={startingBroadcast}
+            disabled={startingBroadcast || (!currentHangout.rtmpActive && !hasLocalMedia)}
             onClick={async () => {
               if (currentHangout.rtmpActive) {
                 apiFetch(`/api/v1/hangouts/${hangoutId}/stream`, {
@@ -659,9 +695,11 @@ export default function HangoutRoomPage() {
             aria-label={
               currentHangout.rtmpActive
                 ? "Stop broadcasting"
-                : startingBroadcast
-                  ? "Starting broadcast…"
-                  : "Start broadcasting"
+                : !hasLocalMedia
+                  ? "Start broadcasting (camera or microphone required)"
+                  : startingBroadcast
+                    ? "Starting broadcast\u2026"
+                    : "Start broadcasting"
             }
             title={
               currentHangout.rtmpActive

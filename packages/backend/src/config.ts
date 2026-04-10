@@ -48,9 +48,25 @@ export const config = {
     rtcMaxPort: parseInt(process.env.RTC_MAX_PORT ?? "49999"),
   },
 
+  turn: {
+    urls: process.env.TURN_URLS ?? "",        // e.g. "turn:turn.example.com:3478" or "turns:turn.example.com:5349"
+    username: process.env.TURN_USERNAME ?? "",
+    credential: process.env.TURN_CREDENTIAL ?? "",
+  },
+
+  tls: {
+    cert: process.env.TLS_CERT ?? "",
+    key: process.env.TLS_KEY ?? "",
+    ca: process.env.TLS_CA ?? "",
+  },
+
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID ?? "",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  },
+
+  get tlsEnabled() {
+    return !!(this.tls.cert && this.tls.key);
   },
 
   get domain() {
