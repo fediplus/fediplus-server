@@ -1,9 +1,9 @@
 import { createServer as createHttpsServer } from "node:https";
 import { createServer as createHttpServer } from "node:http";
-import { createProxy } from "http-proxy";
+import httpProxy from "http-proxy";
 import { readFileSync } from "node:fs";
 import { parse } from "node:url";
-import httpProxy from "http-proxy";
+import next from "next";
 
 const dev = process.env.NODE_ENV !== "production";
 const port = parseInt(process.env.PORT ?? "3000", 10);
